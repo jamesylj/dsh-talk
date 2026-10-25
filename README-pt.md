@@ -27,6 +27,13 @@ pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz
 
 Remover: `dsh plugin --profile web remove dsh-talk`.
 
+**Caminho do GitHub, sem npm:** instale direto deste repositório — DSH Desktop →
+**Plugins → Adicionar plugin**, ou `dsh plugin add
+github:jamesylj/dsh-talk#v0.5.3`. A linha desktop é `#v0.5.3`; a linha Android é
+`github:jamesylj/dsh-talk#v0.6.0-android.1` (ou `#android`). Requer Git e aprovar
+uma vez o script de build do pacote. Passos completos:
+[docs/install-github.md](docs/install-github.md).
+
 ## O que faz
 
 - **Ferramenta `speak`**: o agente fala na máquina host.

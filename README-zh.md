@@ -25,6 +25,12 @@ pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz  # tarball
 
 卸载：`dsh plugin --profile web remove dsh-talk`。
 
+**直接走 GitHub 路径（不需要 npm）：** 在 DSH 桌面版「插件 → 添加插件」填
+`github:jamesylj/dsh-talk#v0.5.3`，或用 `dsh plugin add github:jamesylj/dsh-talk#v0.5.3`
+即可安装。桌面线用 `#v0.5.3`，安卓线用 `#v0.6.0-android.1`（跟随最新提交用
+`#android`）。需要本机装 Git，并允许一次构建脚本（`dsh-talk`）。完整步骤见
+[docs/install-github.md](docs/install-github.md)。
+
 ## 功能
 
 - **`speak` 工具**：助手在宿主机器上朗读回复。

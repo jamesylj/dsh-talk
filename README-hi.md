@@ -27,6 +27,13 @@ pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz
 
 हटाने के लिए: `dsh plugin --profile web remove dsh-talk`.
 
+**GitHub पथ, npm की ज़रूरत नहीं:** सीधे इस रिपॉज़िटरी से इंस्टॉल करें — DSH Desktop →
+**Plugins → Add plugin**, या `dsh plugin add github:jamesylj/dsh-talk#v0.5.3`।
+डेस्कटॉप लाइन `#v0.5.3` है; Android लाइन
+`github:jamesylj/dsh-talk#v0.6.0-android.1` (या `#android`)। Git चाहिए और पैकेज का
+build स्क्रिप्ट एक बार मंज़ूर करना होगा। पूरे चरण:
+[docs/install-github.md](docs/install-github.md)।
+
 ## यह क्या करता है
 
 - **`speak` टूल**: एजेंट होस्ट मशीन पर बोलता है।
