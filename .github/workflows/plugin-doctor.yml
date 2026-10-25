@@ -9,7 +9,7 @@
 # tree and fails the job if any gated check fails. It deliberately does NOT
 # install dependencies or build — see the note below.
 #
-# Criteria and their author: https://github.com/PerryLink/dsh-plugin-doctor/blob/main/SPEC.md
+# Criteria: the dsh-plugin-doctor SPEC.md (static R+K checks).
 name: plugin-doctor
 
 on:

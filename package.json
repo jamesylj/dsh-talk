@@ -10,7 +10,7 @@
   "bugs": {
     "url": "https://github.com/jamesylj/dsh-talk/issues"
   },
-  "author": "PerryLink",
+  "author": "jamesylj",
   "private": false,
   "type": "module",
   "main": "./lib/index.js",
@@ -211,6 +211,6 @@
   "license": "Apache-2.0",
   "funding": {
     "type": "individual",
-    "url": "https://github.com/sponsors/PerryLink"
+    "url": "https://github.com/sponsors/jamesylj"
   }
 }

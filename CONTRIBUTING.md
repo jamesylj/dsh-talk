@@ -1,6 +1,6 @@
 # Contributing to dsh-talk
 
-Thanks for helping. This project is maintained as a normal member of the PerryLink DSH plugin family.
+Thanks for helping. This project is maintained as a normal member of the jamesylj DSH plugin family.
 
 ## Before you open an issue
 

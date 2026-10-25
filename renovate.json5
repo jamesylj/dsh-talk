@@ -1,4 +1,5 @@
-﻿{
+{
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["github>PerryLink/dsh-plugin-kit//renovate/default.json5"],
+  // Shared preset intentionally unset for this fork.
+  extends: [],
 }
