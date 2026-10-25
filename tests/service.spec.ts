@@ -133,14 +133,49 @@ describe('TalkService.stop', () => {
 })
 
 describe('TalkService.status', () => {
-  it('reports the configured engine, voice and auto-reply switch', async () => {
+  it('reports the configured engine, voice and effective mode', async () => {
     const harness = await mountHarness({ autoReply: { enabled: false }, tts: { minimax: { voiceId: 'female-yujie' } } })
     expect(harness.service.status()).toEqual({
       engine: 'minimax',
       speaking: false,
       voiceId: 'female-yujie',
-      autoReplyEnabled: false,
+      mode: 'manual',
     })
+    await harness.ctx.fiber.dispose()
+  })
+})
+
+describe('TalkService.applyMode', () => {
+  it('defaults to auto, flips at runtime and never touches the configured default', async () => {
+    const harness = await mountHarness({})
+    expect(harness.service.status().mode).toBe('auto')
+    expect(harness.service.applyMode('manual')).toEqual({ mode: 'manual' })
+    expect(harness.service.status().mode).toBe('manual')
+    expect(harness.service.applyMode('auto')).toEqual({ mode: 'auto' })
+    expect(harness.service.status().mode).toBe('auto')
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('keeps manual playback working while the mode is manual', async () => {
+    const harness = await mountHarness({ autoReply: { enabled: false } })
+    expect(harness.service.mode()).toBe('manual')
+    appendAssistantMessage(harness.session, 1, '手动播报的回复。')
+    let spoken = ''
+    installMinimax(harness.service, {
+      synthesize: async text => {
+        spoken = text
+        return okResult('audio/mpeg')
+      },
+    })
+    await expect(harness.service.playLatest(String(harness.session.id))).resolves.toMatchObject({ spoken: true, engine: 'minimax' })
+    expect(spoken).toContain('手动播报的回复')
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('rejects a mode outside the wire vocabulary and keeps the previous mode', async () => {
+    const harness = await mountHarness({})
+    expect(() => harness.service.applyMode('sometimes' as never)).toThrow(/mode must be one of/)
+    expect(harness.service.status().mode).toBe('auto')
     await harness.ctx.fiber.dispose()
   })
 })

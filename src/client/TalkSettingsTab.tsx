@@ -1,14 +1,16 @@
 /**
  * The simplified talk settings tab (id `talk` in `settings.plugins.tab`):
  * engine select (MiniMax / MLX), the MiniMax voice id, and the auto-reply
- * read-aloud switch, saved as one append-only profile-patch operation.
+ * read-aloud switch, saved as one append-only profile-patch operation. The
+ * switch mirrors the composer mode button's effective mode, so the two
+ * controls always agree; saving persists the mode as the new default.
  *
  * @module dsh-talk/client/TalkSettingsTab
  */
 
 import { useEffect, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { TalkSettingsInput, TalkSettingsResult, TalkStatus } from '../wire.ts'
+import type { TalkMode, TalkSettingsInput, TalkSettingsResult, TalkStatus } from '../wire.ts'
 
 /** Registration-side injected face: the settings RPCs (RemoteResult unwrapped). */
 export interface TalkSettingsTabInjected {
@@ -36,7 +38,7 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
   const [snapshot, setSnapshot] = useState<TalkStatus | undefined>(undefined)
   const [engine, setEngine] = useState<TalkStatus['engine']>('minimax')
   const [voiceId, setVoiceId] = useState('')
-  const [autoReplyEnabled, setAutoReplyEnabled] = useState(true)
+  const [mode, setMode] = useState<TalkMode>('auto')
   const [note, setNote] = useState<string | undefined>(undefined)
   const [failed, setFailed] = useState(false)
 
@@ -47,7 +49,7 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
       setSnapshot(value)
       setEngine(value.engine)
       setVoiceId(value.voiceId)
-      setAutoReplyEnabled(value.autoReplyEnabled)
+      setMode(value.mode)
     }).catch(() => {})
     return () => {
       cancelled = true
@@ -58,7 +60,7 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
 
   const save = (): void => {
     setFailed(false)
-    void applySettings({ engine, voiceId: voiceId.trim(), autoReplyEnabled }).then(result => {
+    void applySettings({ engine, voiceId: voiceId.trim(), autoReplyEnabled: mode === 'auto' }).then(result => {
       setNote(result.note)
     }).catch(() => {
       setFailed(true)
@@ -80,7 +82,11 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
         <input type="text" value={voiceId} onChange={event => setVoiceId(event.target.value)} />
       </label>
       <div className="row">
-        <input type="checkbox" checked={autoReplyEnabled} onChange={event => setAutoReplyEnabled(event.target.checked)} />
+        <input
+          type="checkbox"
+          checked={mode === 'auto'}
+          onChange={event => setMode(event.target.checked ? 'auto' : 'manual')}
+        />
         {t('autoReplyEnabled')}
       </div>
       <button type="button" onClick={save}>{t('save')}</button>

@@ -3,7 +3,8 @@
 # 🎙️ dsh-talk
 
 **Texto a voz en el host para DeepSeek Harness: las respuestas del agente se leen
-en voz alta y un botón junto al compositor lee o detiene la última respuesta.**
+en voz alta y dos botones junto al compositor cambian el modo automático/manual
+y leen o detienen la última respuesta.**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/dsh-talk)](https://www.npmjs.com/package/dsh-talk)
@@ -33,6 +34,9 @@ Desinstalar: `dsh plugin --profile web remove dsh-talk`.
   asistente (sin bloques de código, limitada por `autoReply.maxChars`).
 - **Botón de reproducción**: un clic lee la última respuesta de la sesión
   actual; otro clic mientras suena la detiene.
+- **Botón de modo**: alterna **auto** (lectura automática al terminar el turno)
+  y **manual** (el host guarda silencio hasta que pulse ▶). Es estado en
+  ejecución: no escribe configuración ni requiere recarga.
 - **Anuncio de fin de turno**: una línea breve cuando el turno no se leyó y no
   hay audio en curso.
 - **Exportación de audio opcional** (desactivada por defecto).
@@ -47,7 +51,8 @@ voz `say` de macOS y la escritura de ajustes de 0.4 se eliminaron en 0.5.
    respaldo local.
 3. Pide al agente que use `speak` o envía un mensaje normal: la respuesta se lee
    al terminar el turno.
-4. Usa ▶ / ⏹ para repetir o detener la última respuesta.
+4. Usa el botón de modo para cambiar entre auto y manual, y ▶ / ⏹ para repetir
+   o detener la última respuesta.
 
 MiniMax necesita `ffplay` (Homebrew `ffmpeg`): `brew install ffmpeg`.
 
@@ -74,7 +79,8 @@ MiniMax necesita `ffplay` (Homebrew `ffmpeg`): `brew install ffmpeg`.
   ICL). Los fragmentos van a un único flujo `sounddevice`.
 - Una lectura nueva solo interrumpe la de la **misma sesión**; la lectura
   automática y los anuncios usan `interrupt: false`.
-- El botón usa `talk/playLatest` y `talk/stop`.
+- El botón ▶ usa `talk/playLatest` y `talk/stop`; el botón de modo solo cambia
+  el modo, así que ▶ sigue funcionando en manual.
 
 ## Configuración de MiniMax
 
@@ -95,9 +101,17 @@ carácter chino cuenta como dos); el texto sale de la máquina.
 
 ## Botón y ajustes
 
-El botón muestra ▶ en reposo y ⏹ mientras habla. La pestaña de ajustes ofrece
-motor, voz de MiniMax y el interruptor de lectura automática; guardar añade una
-operación al patch del perfil (recarga para aplicar).
+El botón de modo muestra «Auto» o «Manual»:
+
+- **Auto** — cada respuesta terminada se lee en voz alta (sujeta a
+  `autoReply.enabled`, a los motivos de fin de turno y a `announce.enabled`).
+- **Manual** — el host no habla tras un turno; solo el botón ▶ lee. Un clic
+  cambia de modo al instante mediante `talk/applyMode`.
+
+El botón ▶ / ⏹ muestra ▶ en reposo y ⏹ mientras habla. El modo es estado en
+ejecución: al reiniciar vuelve al valor configurado de `autoReply.enabled`, y el
+interruptor de la pestaña de ajustes refleja el modo actual y lo guarda al
+guardar. Guardar añade una operación al patch del perfil (recarga para aplicar).
 
 ## Solución de problemas
 

@@ -1,6 +1,21 @@
 # Changelog
 
+## [0.5.1] - 2026-10-25
+
+### Added
+
+- **Composer mode button (auto / manual).** A second button in
+  `conversation.input.left` switches the read-aloud mode: **auto** reads every
+  finished reply (the previous behaviour), **manual** keeps the host completely
+  silent after a turn so only the ▶ button speaks. The switch is immediate
+  (`talk/applyMode`), needs no profile reload and writes no configuration; a
+  restart falls back to the configured `autoReply.enabled`. `talk/status` now
+  reports `mode` instead of `autoReplyEnabled`, the settings tab's auto-reply
+  switch mirrors and persists the effective mode, and `src/index.ts` gates the
+  turn-end announcement on the same mode.
+
 ## [0.5.0] - 2026-10-25
+
 
 ### Breaking changes
 

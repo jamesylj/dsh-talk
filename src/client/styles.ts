@@ -36,6 +36,37 @@ export function installTalkStyles(): () => void {
       opacity: 0.45;
       cursor: default;
     }
+    [data-dsh-talk-mode] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+      padding: 3px 8px;
+      border: 1px solid rgba(127, 127, 127, 0.35);
+      border-radius: 999px;
+      background: transparent;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.75em;
+      line-height: 1.2;
+      color: inherit;
+      opacity: 0.9;
+    }
+    [data-dsh-talk-mode]:hover {
+      background: rgba(127, 127, 127, 0.12);
+    }
+    [data-dsh-talk-mode][data-mode='auto'] {
+      border-color: #2e8b57;
+      color: #2e8b57;
+    }
+    [data-dsh-talk-mode][data-mode='manual'] {
+      border-color: #b26a00;
+      color: #b26a00;
+    }
+    [data-dsh-talk-mode]:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
     [data-dsh-talk-settings] {
       display: flex;
       flex-direction: column;

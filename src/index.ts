@@ -2,9 +2,11 @@
  * `dsh-talk` — host-played text-to-speech for DeepSeek Harness.
  *
  * v0.5 mounts the `talk` service (MiniMax + MLX clone playback, scoped
- * interruption, optional export, settings write-back), registers the `speak`
- * tool and the automatic reply read-aloud, and speaks one generic turn-end
- * announcement when a finished turn was not auto-read.
+ * interruption, optional export, settings write-back, and the runtime
+ * auto/manual mode the composer button switches), registers the `speak` tool
+ * and the automatic reply read-aloud, and speaks one generic turn-end
+ * announcement when a finished turn was not auto-read. Manual mode silences
+ * both the auto-read and the announcement.
  *
  * Function plugin — no default export (the Loader unwraps
  * `exports.default ?? exports`).
@@ -89,7 +91,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 
   const autoReply = new AutoReplyController(
     {
-      enabled: resolved.autoReplyEnabled,
+      // The composer mode button switches this at runtime: `manual` keeps the
+      // controller a no-op without touching the configured default.
+      get enabled() {
+        return service.mode() === 'auto'
+      },
       maxChars: resolved.autoReplyMaxChars,
       skipIfToolSpoke: true,
       skipSubagents: true,
@@ -105,6 +111,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       return
     }
     if (!runningAgents.delete(agent)) return
+    // Manual mode never speaks on its own: no auto-read and no turn-end
+    // announcement — the composer play button is the only trigger.
+    if (service.mode() === 'manual') return
     if (autoReply.handle(agent.session)) return
     if (!resolved.announceEnabled) return
     // Never talk over an in-flight utterance: a long read must play to completion.

@@ -3,7 +3,8 @@
 # 🎙️ dsh-talk
 
 **Host-played text-to-speech for DeepSeek Harness: the agent's replies are read
-aloud, and one composer button reads — or stops — the latest reply.**
+aloud, and two composer buttons switch the auto/manual mode and read — or
+stop — the latest reply.**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![DSH plugin](https://img.shields.io/badge/dsh--plugin-✅-green)](https://github.com/topics/dsh-plugin)
@@ -40,6 +41,9 @@ Uninstall with `dsh plugin --profile web remove dsh-talk`.
   automatically (code blocks stripped, long replies capped by `autoReply.maxChars`).
 - **Composer play button** — click to read the newest assistant reply of the
   current session; click again while it is speaking to stop it.
+- **Composer mode button** — switch between **auto** (replies are read aloud
+  automatically) and **manual** (the plugin stays silent until you click ▶).
+  The switch is runtime state: no config write, no reload.
 - **Turn-end announcement** — a short "Turn complete." line when a finished turn
   was not auto-read and nothing else is playing.
 - **Optional audio export** — every host synthesis can be written to a bounded
@@ -57,7 +61,8 @@ projection is needed.
    API key; MLX is the offline clone fallback.
 3. Ask the agent to use `speak`, or just send a normal message — the reply is
    read aloud when the turn ends.
-4. Use the ▶ / ⏹ button next to the composer to replay or stop the latest reply.
+4. Use the auto/manual pill next to the composer to change the mode, and the
+   ▶ / ⏹ button to replay or stop the latest reply.
 
 `ffplay` (from Homebrew `ffmpeg`) must be on the host `PATH` for MiniMax
 playback: `brew install ffmpeg`.
@@ -93,8 +98,9 @@ All keys live under the `talk` row's `config` in the profile patch layer.
   one continuous `sounddevice` output stream.
 - A new utterance only stops speech the **same session** already had in flight;
   auto-read and announcements pass `interrupt: false`, so a long read finishes.
-- The composer button reads the newest assistant reply through the same
-  pipeline and stops it with `talk/stop`.
+- The composer ▶ button reads the newest assistant reply through the same
+  pipeline and stops it with `talk/stop`; the auto/manual pill only switches the
+  mode, so the ▶ button always works in manual mode.
 
 ## MiniMax setup
 
@@ -124,11 +130,19 @@ Then set `tts.engine: mlx` (or keep `minimax` and let
 
 ## Play button and settings
 
-The button in `conversation.input.left` shows ▶ when idle and ⏹ while speaking.
-Clicking it calls `talk/playLatest` with the current session id, or `talk/stop`
-when audio is playing. The settings tab offers the engine, the MiniMax voice id
-and the auto-reply switch; saving appends one row operation to the profile
-patch layer (reload to apply).
+The mode pill in `conversation.input.left` shows `Auto` or `Manual`:
+
+- **Auto** — every finished reply is read aloud (subject to `autoReply.enabled`,
+  the turn-end reasons and `announce.enabled`).
+- **Manual** — the host stays completely silent after a turn; only the ▶ button
+  speaks. A click switches to the other mode immediately via `talk/applyMode`.
+
+The ▶ / ⏹ button next to it shows ▶ when idle and ⏹ while speaking. Clicking it
+calls `talk/playLatest` with the current session id, or `talk/stop` when audio
+is playing. The mode is runtime state: a restart falls back to the configured
+`autoReply.enabled` default, and the settings tab's auto-reply switch both
+mirrors the current mode and persists it. Saving the settings tab appends one
+row operation to the profile patch layer (reload to apply).
 
 ## Troubleshooting
 

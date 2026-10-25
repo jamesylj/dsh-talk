@@ -1,7 +1,7 @@
 {
   "name": "dsh-talk",
-  "version": "0.5.0",
-  "description": "Host-played text-to-speech for DeepSeek Harness: a speak tool and automatic reply read-aloud through MiniMax speech-2.8-turbo (SSE → ffplay) or a local MLX Qwen3-TTS clone worker, plus a composer play/stop button and optional audio export.",
+  "version": "0.5.1",
+  "description": "Host-played text-to-speech for DeepSeek Harness: a speak tool and automatic reply read-aloud through MiniMax speech-2.8-turbo (SSE → ffplay) or a local MLX Qwen3-TTS clone worker, plus a composer auto/manual mode switch, a play/stop button and optional audio export.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jamesylj/dsh-talk.git"

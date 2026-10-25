@@ -35,7 +35,8 @@ import {
 } from './settings-patch.ts'
 import { appendSpeechEvent } from './speech.ts'
 import type { DshTalkSpeechEvent, SpeechReason, SpeechTtsEngine } from './speech.ts'
-import type { TalkPlayResult, TalkSettingsInput, TalkSettingsResult, TalkStatus, TalkStopResult } from './wire.ts'
+import type { TalkMode, TalkModeResult, TalkPlayResult, TalkSettingsInput, TalkSettingsResult, TalkStatus, TalkStopResult } from './wire.ts'
+import { TALK_MODES } from './wire.ts'
 
 /** Profile patch-layer filename the settings panel appends to. */
 const PROFILE_PATCH_FILENAME = 'cordis.patch.yml'
@@ -119,6 +120,13 @@ export class TalkService extends TypertRemoteService {
   private mlxEngine: MlxEngine | null = null
   /** MiniMax cloud engine (SSE → ffplay); lazily created. */
   private minimaxEngine: MinimaxEngine | null = null
+  /**
+   * Runtime auto/manual override set by the composer mode button. `null` means
+   * "no override yet": the configured `autoReply.enabled` decides. The mode is
+   * interaction state, not configuration, so it lives with the plugin instance
+   * and is not persisted — a restart falls back to the configured default.
+   */
+  private modeOverride: TalkMode | null = null
 
   /**
    * @param ctx - context carrying the subprocess service and the session store.
@@ -299,8 +307,34 @@ export class TalkService extends TypertRemoteService {
       engine: this.resolved.ttsEngine,
       speaking: this.activeSyntheses.size > 0,
       voiceId: this.resolved.minimaxVoiceId,
-      autoReplyEnabled: this.resolved.autoReplyEnabled,
+      mode: this.mode(),
     }
+  }
+
+  /**
+   * The effective interaction mode: the composer button's runtime override when
+   * it exists, otherwise the configured `autoReply.enabled` default.
+   *
+   * @returns `auto` (read every reply aloud) or `manual` (button only).
+   */
+  mode(): TalkMode {
+    return this.modeOverride ?? (this.resolved.autoReplyEnabled ? 'auto' : 'manual')
+  }
+
+  /**
+   * Switch the interaction mode at runtime (the composer mode button). Takes
+   * effect immediately for the auto-reply controller and the turn-end
+   * announcement; the configured default is untouched.
+   *
+   * @param mode - the mode to switch to.
+   * @returns the effective mode after the switch.
+   */
+  applyMode(mode: TalkMode): TalkModeResult {
+    if (!(TALK_MODES as readonly string[]).includes(mode)) {
+      throw new Error(`dsh-talk: mode must be one of ${TALK_MODES.join(' | ')}`)
+    }
+    this.modeOverride = mode
+    return { mode: this.mode() }
   }
 
   /**

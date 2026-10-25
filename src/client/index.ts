@@ -1,8 +1,9 @@
 /**
  * `dsh-talk`, browser half: mounts the `talk` Remote contribution, registers
- * the composer play/stop voice button into `conversation.input.left`, and the
- * simplified settings tab (`settings.plugins.tab`, id `talk`). All data
- * arrives through the `remote.talk` namespace.
+ * the composer auto/manual mode button plus the play/stop voice button into
+ * `conversation.input.left`, and the simplified settings tab
+ * (`settings.plugins.tab`, id `talk`). All data arrives through the
+ * `remote.talk` namespace.
  *
  * @module dsh-talk/client
  */
@@ -15,13 +16,24 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { TalkSettingsTabInjected } from './TalkSettingsTab.tsx'
 import { TalkSettingsTab } from './TalkSettingsTab.tsx'
+import type { TalkModeInjected } from './TalkModeButton.tsx'
+import { TalkModeButton } from './TalkModeButton.tsx'
 import type { TalkVoiceInjected } from './TalkVoiceButton.tsx'
 import { TalkVoiceButton } from './TalkVoiceButton.tsx'
 import { en, zh, type TalkLocaleKey } from './locales.ts'
 import { TALK_REMOTE } from './remote.ts'
 import { installTalkStyles } from './styles.ts'
-import type { TalkPlayResult, TalkSettingsInput, TalkSettingsResult, TalkStatus, TalkStopResult } from '../wire.ts'
+import type {
+  TalkMode,
+  TalkModeResult,
+  TalkPlayResult,
+  TalkSettingsInput,
+  TalkSettingsResult,
+  TalkStatus,
+  TalkStopResult,
+} from '../wire.ts'
 
+export type { TalkModeInjected, TalkModeProps } from './TalkModeButton.tsx'
 export type { TalkVoiceInjected, TalkVoiceProps } from './TalkVoiceButton.tsx'
 export type { TalkSettingsTabInjected, TalkSettingsTabProps } from './TalkSettingsTab.tsx'
 export type { TalkLocaleKey } from './locales.ts'
@@ -76,8 +88,17 @@ export async function apply(ctx: Context): Promise<void> {
       unwrap<TalkPlayResult>(await talk.playLatest(sessionId), 'playLatest')
     const stop: TalkVoiceInjected['stop'] = async () =>
       unwrap<TalkStopResult>(await talk.stop(), 'stop')
+    const applyMode: TalkModeInjected['applyMode'] = async (mode: TalkMode) =>
+      unwrap<TalkModeResult>(await talk.applyMode({ mode }), 'applyMode')
     const applySettings: TalkSettingsTabInjected['applySettings'] = async (settings: TalkSettingsInput) =>
       unwrap<TalkSettingsResult>(await talk.applySettings(settings), 'applySettings')
+
+    slots.inject('conversation.input.left', () => slots.register({
+      name: 'conversation.input.left',
+      id: 'talk-mode',
+      order: 19,
+      inject: (): TalkModeInjected => ({ status, applyMode }),
+    }, TalkModeButton))
 
     slots.inject('conversation.input.left', () => slots.register({
       name: 'conversation.input.left',

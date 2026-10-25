@@ -1,5 +1,9 @@
 # dsh-talk bundle patch: mount host-played text-to-speech.
 #
+# The composer shows two controls: an auto/manual mode button (runtime state,
+# not config — see talk/applyMode) and the play/stop button for the latest
+# reply.
+#
 # Every key below is a Config field (Schemastery schema); invalid values fail
 # the profile load loudly. See README.md "Configuration" for the full table.
 - insert:
@@ -55,7 +59,9 @@
         # Speak "Turn complete." when a turn was not auto-read and nothing plays.
         announce:
           enabled: true
-        # Automatic read-aloud of the assistant's final reply.
+        # Automatic read-aloud of the assistant's final reply. The composer
+        # mode button overrides this at runtime (auto = read every reply,
+        # manual = only the play button speaks); a restart returns here.
         autoReply:
           enabled: true
           # Cap on one spoken reply in characters (1..100000).

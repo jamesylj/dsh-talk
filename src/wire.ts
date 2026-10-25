@@ -1,8 +1,8 @@
 /**
  * The `talk` Remote wire vocabulary for the v0.5 surface: status, manual
- * play-latest, stop, and the three-field settings save. The descriptor list is
- * shared verbatim by the host `./typert` manifest and the client Remote
- * contribution, so the two faces cannot drift.
+ * play-latest, stop, the auto/manual mode switch, and the three-field settings
+ * save. The descriptor list is shared verbatim by the host `./typert` manifest
+ * and the client Remote contribution, so the two faces cannot drift.
  *
  * @module dsh-talk/wire
  */
@@ -12,6 +12,12 @@ import type { InvocationDescriptor } from '@deepseek-ai/dsh-typert-protocol'
 
 /** The engines the settings panel may select. */
 export const TTS_ENGINES = ['minimax', 'mlx'] as const
+
+/** The two interaction modes the composer mode button switches between. */
+export const TALK_MODES = ['auto', 'manual'] as const
+
+/** Auto read-aloud mode: `auto` reads every reply, `manual` only on the button. */
+export type TalkMode = (typeof TALK_MODES)[number]
 
 /** Strict wire codec carrying both the published and checkout Typert faces. */
 function strictWire<T>(typeSymbol: string, schema: T) {
@@ -26,8 +32,8 @@ export interface TalkStatus {
   speaking: boolean
   /** MiniMax system voice id currently configured. */
   voiceId: string
-  /** Whether auto-reply read-aloud is enabled. */
-  autoReplyEnabled: boolean
+  /** Effective interaction mode (`auto` reads replies aloud, `manual` never does). */
+  mode: TalkMode
 }
 
 /** Strict wire schema for {@link TalkStatus}. */
@@ -35,7 +41,7 @@ export const TALK_STATUS_SCHEMA = z.object({
   engine: z.union([z.literal('minimax'), z.literal('mlx')]),
   speaking: z.boolean(),
   voiceId: z.string(),
-  autoReplyEnabled: z.boolean(),
+  mode: z.enum(['auto', 'manual']),
 })
 
 /** Result of `talk/playLatest`: the manual read of the newest assistant reply. */
@@ -67,6 +73,28 @@ export interface TalkStopResult {
 /** Strict wire schema for {@link TalkStopResult}. */
 export const TALK_STOP_RESULT_SCHEMA = z.object({
   stopped: z.boolean(),
+})
+
+/** The composer mode button's submission. */
+export interface TalkModeInput {
+  /** The mode to switch to. */
+  mode: TalkMode
+}
+
+/** Strict wire schema for {@link TalkModeInput}. */
+export const TALK_MODE_INPUT_SCHEMA = z.object({
+  mode: z.enum(['auto', 'manual']),
+})
+
+/** Result of `talk/applyMode`: the effective mode after the switch. */
+export interface TalkModeResult {
+  /** The mode now in force. */
+  mode: TalkMode
+}
+
+/** Strict wire schema for {@link TalkModeResult}. */
+export const TALK_MODE_RESULT_SCHEMA = z.object({
+  mode: z.enum(['auto', 'manual']),
 })
 
 /** Settings the panel may change. */
@@ -147,6 +175,23 @@ export const TALK_STOP_DESCRIPTOR = Object.freeze({
   sourceLocation: SOURCE,
 } as const) satisfies InvocationDescriptor
 
+/** The `talk/applyMode` invocation descriptor. */
+export const TALK_APPLY_MODE_DESCRIPTOR = Object.freeze({
+  id: 'dsh-talk#talk/applyMode',
+  service: 'talk',
+  namespace: 'talk',
+  method: 'applyMode',
+  invocation: Object.freeze({ kind: 'direct' }),
+  parameters: Object.freeze([Object.freeze({
+    name: 'mode',
+    wire: 'mode',
+    source: 'json',
+    codec: strictWire('dsh-talk/types#TalkModeInput', TALK_MODE_INPUT_SCHEMA),
+  } satisfies InvocationDescriptor['parameters'][number])]),
+  result: strictWire('dsh-talk/types#TalkModeResult', TALK_MODE_RESULT_SCHEMA),
+  sourceLocation: SOURCE,
+} as const) satisfies InvocationDescriptor
+
 /** The `talk/applySettings` invocation descriptor. */
 export const TALK_APPLY_SETTINGS_DESCRIPTOR = Object.freeze({
   id: 'dsh-talk#talk/applySettings',
@@ -169,5 +214,6 @@ export const TALK_INVOCATIONS = Object.freeze([
   TALK_STATUS_DESCRIPTOR,
   TALK_PLAY_LATEST_DESCRIPTOR,
   TALK_STOP_DESCRIPTOR,
+  TALK_APPLY_MODE_DESCRIPTOR,
   TALK_APPLY_SETTINGS_DESCRIPTOR,
 ])

@@ -2,7 +2,7 @@
 
 # 🎙️ dsh-talk
 
-**DeepSeek Harness 的宿主端语音朗读：助手回复自动念出来，输入框旁一个按钮可以手动朗读或中途停止。**
+**DeepSeek Harness 的宿主端语音朗读：助手回复自动念出来，输入框旁两个按钮分别切换自动/手动模式、手动朗读或中途停止。**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/dsh-talk)](https://www.npmjs.com/package/dsh-talk)
@@ -30,6 +30,7 @@ pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz  # tarball
 - **`speak` 工具**：助手在宿主机器上朗读回复。
 - **自动朗读**：回合结束时自动念出最后一条助手回复（去掉代码块，长度受 `autoReply.maxChars` 限制）。
 - **输入框播放按钮**：单击朗读当前会话最近一条回复；播放中单击立即停止。
+- **输入框模式按钮**：在 **自动**（回合结束自动朗读）和 **手动**（插件保持安静，只有点 ▶ 才播报）之间切换；纯运行时状态，不写配置、不需重载。
 - **回合结束播报**：没有自动朗读且当前没有播放时，补一句 “Turn complete.”。
 - **可选音频导出**：把宿主合成的音频写入文件并通过 `audioPath` 返回（默认关闭）。
 
@@ -40,7 +41,7 @@ pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz  # tarball
 1. 安装并重启 profile。
 2. 配置引擎：MiniMax 为默认（需要 API Key）；MLX 作为离线克隆回退。
 3. 让助手调用 `speak`，或直接正常对话——回合结束会自动朗读。
-4. 用输入框旁的 ▶ / ⏹ 按钮重播或停止最近回复。
+4. 用输入框旁的「自动/手动」按钮切换模式，用 ▶ / ⏹ 按钮重播或停止最近回复。
 
 MiniMax 播放依赖 `ffplay`（Homebrew `ffmpeg`）：`brew install ffmpeg`。
 
@@ -65,7 +66,7 @@ MiniMax 播放依赖 `ffplay`（Homebrew `ffmpeg`）：`brew install ffmpeg`。
 - **MiniMax**（`speech-2.8-turbo`）：调用同步 T2A 接口（`stream: true`），SSE 的十六进制 MP3 分片直接写入一个 `ffplay` 进程的 stdin。首音几百毫秒内开始，长文本是一条连续音频流；超过 `tts.minimax.chunkChars` 的文本按句切分但仍是同一个播放器。
 - **MLX**（离线）：常驻 Python worker 保持量化 Qwen3-TTS **Base** 模型热加载，只用 x-vector 克隆 `tts.mlx.refAudio`（无预设音色、无 ICL 参考文本），片段写入同一条 `sounddevice` 输出流。
 - 新的朗读只会打断**同一会话**正在播放的内容；自动朗读与播报传 `interrupt: false`，长文可以完整读完。
-- 输入框按钮通过同一管线朗读最近回复，并用 `talk/stop` 停止。
+- 输入框 ▶ 按钮通过同一管线朗读最近回复，并用 `talk/stop` 停止；「自动/手动」按钮只切模式，手动模式下 ▶ 依然可用。
 
 ## MiniMax 配置
 
@@ -87,7 +88,12 @@ export MINIMAX_CN_API_KEY=...
 
 ## 按钮与设置
 
-输入框左侧按钮空闲时显示 ▶、播放中显示 ⏹：单击分别调用 `talk/playLatest`（当前会话）和 `talk/stop`。设置面板提供引擎、MiniMax 音色和自动朗读开关，保存会向 profile patch 追加一条操作（重载后生效）。
+输入框左侧的模式按钮显示「自动」或「手动」：
+
+- **自动**：回合结束后自动朗读回复（仍受 `autoReply.enabled`、回合结束原因和 `announce.enabled` 约束）。
+- **手动**：回合结束后宿主完全不发声，只有点 ▶ 按钮才朗读；单击按钮会立即通过 `talk/applyMode` 切到另一种模式。
+
+旁边的 ▶ / ⏹ 按钮空闲时显示 ▶、播放中显示 ⏹：单击分别调用 `talk/playLatest`（当前会话）和 `talk/stop`。模式是运行时状态，重启后回到配置里的 `autoReply.enabled` 默认值；设置面板的自动朗读开关会显示当前模式，保存后即成为新的默认值。保存设置会向 profile patch 追加一条操作（重载后生效）。
 
 ## 故障排查
 
