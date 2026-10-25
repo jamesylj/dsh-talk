@@ -94,6 +94,34 @@ function supportedMime(): string | undefined {
   return undefined
 }
 
+/** One utterance's local audio element plus the object URL backing it. */
+interface ActivePlayer {
+  readonly player: HTMLAudioElement
+  readonly url: string
+}
+
+/**
+ * Pause and release one local player: the object URL is revoked even when the
+ * element already ended or failed, so the single-active-player rule cannot
+ * leak blobs. Idempotent, and safe when the browser has already detached the
+ * element.
+ *
+ * @param active - the player to release, or null.
+ */
+function releasePlayer(active: ActivePlayer | null): void {
+  if (active === null) return
+  try {
+    active.player.pause()
+  } catch {
+    // The element is already detached; the URL still has to be revoked.
+  }
+  try {
+    URL.revokeObjectURL(active.url)
+  } catch {
+    // The URL is already revoked.
+  }
+}
+
 /**
  * The record button itself. All browser capability reads are feature-detected
  * and degrade to a disabled button with no throw.
@@ -434,33 +462,78 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
     : undefined
   const speech = readProjection === undefined ? undefined : readProjection('talk:speech')
   const playedRef = useRef<string | null>(null)
+  const playerRef = useRef<ActivePlayer | null>(null)
+  // Bumped whenever an utterance starts or the component tears down; an
+  // `audio()` response carrying an older token is dropped instead of playing.
+  const playbackTokenRef = useRef(0)
+  // Playback is strictly serial. Each new utterance first stops whatever the
+  // previous one started — the local <audio> is paused and its object URL
+  // revoked, and any browser speech is cancelled — so two quick auto-reply
+  // turns can never overlap. No cleanup is attached to this effect on purpose:
+  // a re-render can hand us a fresh projection object with the SAME
+  // utteranceId, and a per-run cleanup would silence the playing audio.
   useEffect(() => {
     if (speech === null || speech === undefined || speech.utteranceId === playedRef.current) return
     playedRef.current = speech.utteranceId
+    const token = (playbackTokenRef.current += 1)
+    releasePlayer(playerRef.current)
+    playerRef.current = null
+    // A queued/previous SpeechSynthesis utterance must not overlap this one,
+    // whichever engine produced it.
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
     if (speech.engine === 'browser') {
-      if (typeof speechSynthesis !== 'undefined') {
-        const utterance = new SpeechSynthesisUtterance(speech.text)
-        const voice = selectBrowserVoice(speechSynthesis.getVoices(), speech.voice)
-        if (voice !== undefined) utterance.voice = voice
-        if (speech.rate !== undefined) utterance.rate = speech.rate
-        if (speech.pitch !== undefined) utterance.pitch = speech.pitch
-        speechSynthesis.speak(utterance)
-      } else {
+      if (typeof speechSynthesis === 'undefined') {
         console.warn('[dsh-talk] speechSynthesis unavailable')
+        return
       }
+      const utterance = new SpeechSynthesisUtterance(speech.text)
+      const voice = selectBrowserVoice(speechSynthesis.getVoices(), speech.voice)
+      if (voice !== undefined) utterance.voice = voice
+      if (speech.rate !== undefined) utterance.rate = speech.rate
+      if (speech.pitch !== undefined) utterance.pitch = speech.pitch
+      speechSynthesis.speak(utterance)
       return
     }
     void audio(speech.utteranceId).then(entry => {
-      if (entry === null) return
-      const binary = atob(entry.data)
-      const bytes = new Uint8Array(binary.length)
-      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-      const url = URL.createObjectURL(new Blob([bytes], { type: entry.mime }))
-      const player = new Audio(url)
-      void player.play()
-      player.addEventListener('ended', () => URL.revokeObjectURL(url))
+      if (entry === null || token !== playbackTokenRef.current) return
+      let url: string | null = null
+      try {
+        const binary = atob(entry.data)
+        const bytes = new Uint8Array(binary.length)
+        for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+        url = URL.createObjectURL(new Blob([bytes], { type: entry.mime }))
+        const player = new Audio(url)
+        const active: ActivePlayer = { player, url }
+        const releaseActive = (): void => {
+          if (playerRef.current === active) playerRef.current = null
+          releasePlayer(active)
+        }
+        player.addEventListener('ended', releaseActive)
+        player.addEventListener('error', releaseActive)
+        playerRef.current = active
+        void player.play().catch(releaseActive)
+      } catch {
+        // A failed decode/play must not leak the URL we may have created.
+        if (url !== null) {
+          try {
+            URL.revokeObjectURL(url)
+          } catch {
+            // The URL is already revoked.
+          }
+        }
+      }
     }).catch(() => {})
   }, [speech, audio])
+
+  // Unmount cleanup: stop the player, revoke its URL, cancel synthesis, and
+  // invalidate any in-flight `audio()` response so nothing starts playing into
+  // a torn-down component (or leaks a URL created after unmount).
+  useEffect(() => () => {
+    playbackTokenRef.current += 1
+    releasePlayer(playerRef.current)
+    playerRef.current = null
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+  }, [])
 
   const disabled = settings === undefined || settings.record.enabled !== true
   const label = recording
