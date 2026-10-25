@@ -6,6 +6,10 @@
 
 - **A projected utterance now plays once per client runtime.** Playback state lived in the mic-button component's refs, so a slot remount / client-plugin HMR reload / re-delivered projection baseline replayed the last auto-read reply — an audible repeat loop with no new turns and no new host speech records. The "already started" claim is now module-scoped (bounded LRU, `present.ts`), unmount no longer cancels playback (a remount used to cut and replay), and a bounded Local Storage breadcrumb ring (`dsh-talk:playback-debug`) records play/skip-duplicate/mount/unmount events for field diagnosis.
 
+### Docs
+
+- **edge-tts 403 troubleshooting.** Older edge-tts builds are rejected by the service (`WSServerHandshakeError: 403 Invalid response status`, stale `Sec-MS-GEC`); the READMEs now say to upgrade to edge-tts ≥ 7.3.1 and point `tts.edgeTts.command` at it (a dedicated venv is enough), which restores local synthesis and file export.
+
 ## [0.3.27] - 2026-10-25
 
 ### Added

@@ -269,6 +269,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 
 - **Browser support**: Web Speech and MediaRecorder are feature-detected; without them the mic button disables itself and host engines (FunASR/whisper.cpp) can still transcribe when configured.
 - **Local engines are your install**: `edge-tts`, `piper`, and `whisper.cpp` executables and models must be installed separately.
+- **edge-tts fails with 403 (`WSServerHandshakeError`)** — an outdated edge-tts build is rejected by the service; upgrade to edge-tts ≥ 7.3.1 (a dedicated venv works) and point `tts.edgeTts.command` at its absolute path.
 - **Audio files need a local engine**: the browser voice synthesizes on the client, so `speak` returns no `audioPath` there (the result says so explicitly), and a local engine that fails and falls back to the browser also has no file. Exported files live in the plugin's own bounded directory — see Audio file export for the location, naming, and cleanup rules.
 - **Recording format**: the browser records with its native MediaRecorder codec; whisper.cpp may require a WAV-configured recorder or a server-side conversion for other formats.
 - **Settings apply on reload**: the settings tab appends to the profile patch; a profile reload (or web-app restart) activates the changes.
