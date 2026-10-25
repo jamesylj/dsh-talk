@@ -204,6 +204,10 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). `cord
 | `tts.mlx.temperature` | `0.6` | Sampling temperature (0..1.5); lower is more stable and less prone to dialect/language drift |
 | `tts.mlx.topP` | `0.9` | Nucleus sampling top-p (0.05..1) |
 | `tts.mlx.topK` | `30` | Top-k sampling (0..200) |
+| `tts.mlx.mode` | `custom` | `custom` = preset CustomVoice speaker; `clone` = clone the voice in `tts.mlx.refAudio` (Base model only) |
+| `tts.mlx.refAudio` | *(none)* | Reference WAV for clone mode; required when `mode` is `clone` |
+| `tts.mlx.refText` | *(none)* | Exact transcript of `tts.mlx.refAudio`; required only for `cloneMode: icl` |
+| `tts.mlx.cloneMode` | `xvector` | `xvector` (speaker embedding only, fastest) or `icl` (audio + text, closer detail) |
 | `tts.rate` | `0` | Rate offset in percent (-50..50) for edge-tts/piper; also scales the macOS `say` rate |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` executable (local and offline; the `macos` engine only exists on macOS) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Installed voice name exactly as `say -v '?'` lists it; an unknown name is rejected instead of silently using the system default |

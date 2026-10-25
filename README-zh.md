@@ -203,6 +203,10 @@ Error: dsh-talk: speak text must not be empty
 | `tts.mlx.temperature` | `0.6` | 采样温度（0..1.5）；越低越稳定、越不容易跑出方言/语言漂移 |
 | `tts.mlx.topP` | `0.9` | 核采样 top-p（0.05..1） |
 | `tts.mlx.topK` | `30` | Top-k 采样（0..200） |
+| `tts.mlx.mode` | `custom` | `custom` = 预设 CustomVoice 音色；`clone` = 克隆 `tts.mlx.refAudio` 的声音（仅 Base 模型） |
+| `tts.mlx.refAudio` | *(无)* | 克隆模式参考音频；`mode: clone` 时必填 |
+| `tts.mlx.refText` | *(无)* | 参考音频的精确文本；仅 `cloneMode: icl` 需要 |
+| `tts.mlx.cloneMode` | `xvector` | `xvector`（仅说话人向量，最快）或 `icl`（音频+文本，细节更接近） |
 | `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50）；同时按百分比缩放 macOS `say` 的语速 |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` 可执行文件（本地离线；`macos` 引擎仅 macOS 可用） |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | 已安装语音名，须与 `say -v '?'` 列出的完全一致；未知名称会被拒绝，而不是静默改用系统默认语音 |

@@ -200,6 +200,14 @@ export interface TtsMlxConfig {
   topP?: number
   /** Top-k sampling (default 30). */
   topK?: number
+  /** Voice mode: CustomVoice preset speaker, or clone a reference voice (default "custom"). */
+  mode?: 'custom' | 'clone'
+  /** Reference WAV for `mode: clone` (Base model only); required in clone mode. */
+  refAudio?: string
+  /** Exact transcript of {@link refAudio}; only needed for `cloneMode: icl`. */
+  refText?: string
+  /** Clone strategy: x-vector only (fast, speaker embedding) or ICL (audio + text). */
+  cloneMode?: 'xvector' | 'icl'
 }
 
 /** macOS system voice (`say`) engine configuration. */
@@ -386,6 +394,14 @@ export interface ResolvedConfig {
   mlxTopP: number
   /** MLX top-k sampling. */
   mlxTopK: number
+  /** MLX voice mode. */
+  mlxMode: 'custom' | 'clone'
+  /** Reference WAV for clone mode, or null. */
+  mlxRefAudio: string | null
+  /** Reference transcript for ICL cloning, or null. */
+  mlxRefText: string | null
+  /** Clone strategy. */
+  mlxCloneMode: 'xvector' | 'icl'
   /** piper executable. */
   piperCommand: string
   /** piper model path, or null. */
@@ -492,6 +508,10 @@ export const Config: z<Config> = z.object({
       temperature: z.number().min(0).max(1.5).default(0.6),
       topP: z.number().min(0.05).max(1).default(0.9),
       topK: z.number().min(0).max(200).default(30),
+      mode: z.union(['custom', 'clone'] as const).default('custom'),
+      refAudio: z.string(),
+      refText: z.string(),
+      cloneMode: z.union(['xvector', 'icl'] as const).default('xvector'),
     }),
     export: z.object({
       enabled: z.boolean().default(true),
@@ -690,6 +710,20 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const mlxTemperature = numberOf(tts.mlx?.temperature, 0.6, 0, 1.5, 'tts.mlx.temperature')
   const mlxTopP = numberOf(tts.mlx?.topP, 0.9, 0.05, 1, 'tts.mlx.topP')
   const mlxTopK = numberOf(tts.mlx?.topK, 30, 0, 200, 'tts.mlx.topK')
+  const mlxModeRaw = tts.mlx?.mode ?? 'custom'
+  if (mlxModeRaw !== 'custom' && mlxModeRaw !== 'clone') throw new Error('dsh-talk: config.tts.mlx.mode must be "custom" or "clone"')
+  const mlxMode = mlxModeRaw
+  const mlxRefAudio = nullableNonEmptyStringOf(tts.mlx?.refAudio, 'tts.mlx.refAudio')
+  const mlxRefText = nullableNonEmptyStringOf(tts.mlx?.refText, 'tts.mlx.refText')
+  const mlxCloneModeRaw = tts.mlx?.cloneMode ?? 'xvector'
+  if (mlxCloneModeRaw !== 'xvector' && mlxCloneModeRaw !== 'icl') throw new Error('dsh-talk: config.tts.mlx.cloneMode must be "xvector" or "icl"')
+  const mlxCloneMode = mlxCloneModeRaw
+  if (mlxMode === 'clone' && mlxRefAudio === null) {
+    throw new Error('dsh-talk: config.tts.mlx.refAudio is required when tts.mlx.mode = "clone"')
+  }
+  if (mlxMode === 'clone' && mlxCloneMode === 'icl' && mlxRefText === null) {
+    throw new Error('dsh-talk: config.tts.mlx.refText is required when tts.mlx.cloneMode = "icl"')
+  }
   const ttsExportEnabled = booleanOf(tts.export?.enabled, true, 'tts.export.enabled')
   const ttsExportDir = resolveExportDir(tts.export?.dir)
   const ttsExportMaxFiles = numberOf(
@@ -782,6 +816,10 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
     mlxTemperature,
     mlxTopP,
     mlxTopK,
+    mlxMode,
+    mlxRefAudio,
+    mlxRefText,
+    mlxCloneMode,
     piperCommand,
     piperModelPath,
     ttsExportEnabled,

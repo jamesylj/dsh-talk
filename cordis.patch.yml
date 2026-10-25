@@ -113,6 +113,12 @@
             temperature: 0.6
             topP: 0.9
             topK: 30
+            # custom = preset CustomVoice speaker; clone = clone refAudio voice
+            # (requires a Base model and a reference WAV).
+            mode: custom
+            refAudio: ''
+            refText: ''
+            cloneMode: xvector
           # Exported audio files: every locally synthesized utterance is also
           # written to a file whose absolute path the speak tool returns as
           # audioPath (hand it to another tool's file argument). The browser

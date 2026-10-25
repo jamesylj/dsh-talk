@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.38] - 2026-10-25
+
+### Added
+
+- **Voice cloning (`tts.mlx.mode: clone`).** With a Qwen3-TTS **Base** model the worker can clone a reference voice instead of using a CustomVoice preset speaker: `tts.mlx.refAudio` points at a reference WAV (e.g. generated with `say -v "Lilian (Premium)"`), `tts.mlx.cloneMode` selects `xvector` (speaker embedding only, fastest) or `icl` (reference audio + `tts.mlx.refText`). Cloned reference features are cached per worker, and the resident single-stream playback/long-text behavior is unchanged. Use `mode: custom` (default) to keep the preset `Vivian` speaker.
+
 ## [0.3.37] - 2026-10-25
 
 ### Fixed

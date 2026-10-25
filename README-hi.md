@@ -195,6 +195,10 @@ Error: dsh-talk: speak text must not be empty
 | `tts.mlx.temperature` | `0.6` | सैंपलिंग तापमान (0..1.5); कम = अधिक स्थिर, बोली/भाषा drift कम |
 | `tts.mlx.topP` | `0.9` | Nucleus सैंपलिंग top-p (0.05..1) |
 | `tts.mlx.topK` | `30` | Top-k सैंपलिंग (0..200) |
+| `tts.mlx.mode` | `custom` | `custom` = preset CustomVoice वॉइस; `clone` = `tts.mlx.refAudio` की आवाज़ क्लोन करें (केवल Base मॉडल) |
+| `tts.mlx.refAudio` | *(कोई नहीं)* | clone मोड के लिए संदर्भ WAV; `mode: clone` पर आवश्यक |
+| `tts.mlx.refText` | *(कोई नहीं)* | `tts.mlx.refAudio` का सटीक ट्रांसक्रिप्ट; केवल `cloneMode: icl` के लिए |
+| `tts.mlx.cloneMode` | `xvector` | `xvector` (केवल स्पीकर एम्बेडिंग, सबसे तेज़) या `icl` (ऑडियो + टेक्स्ट) |
 | `tts.rate` | `0` | edge-tts/piper के लिए गति ऑफ़सेट प्रतिशत में (-50..50); macOS `say` की गति भी इसी से स्केल होती है |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` निष्पादन (स्थानीय और ऑफ़लाइन; `macos` इंजन केवल macOS पर) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | इंस्टॉल वॉइस का नाम ठीक वैसा जैसा `say -v '?'` सूचीबद्ध करता है; अज्ञात नाम अस्वीकार होता है, चुपचाप डिफ़ॉल्ट वॉइस उपयोग नहीं होती |

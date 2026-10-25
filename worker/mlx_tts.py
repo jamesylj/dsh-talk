@@ -159,7 +159,18 @@ def main() -> int:
     parser.add_argument("--temperature", type=float, default=0.6)
     parser.add_argument("--top-p", type=float, default=0.9)
     parser.add_argument("--top-k", type=int, default=30)
+    parser.add_argument("--mode", choices=["custom", "clone"], default="custom")
+    parser.add_argument("--ref-audio", default="")
+    parser.add_argument("--ref-text", default="")
+    parser.add_argument("--clone-mode", choices=["xvector", "icl"], default="xvector")
     args = parser.parse_args()
+    if args.mode == "clone":
+        if args.ref_audio == "" or not os.path.exists(args.ref_audio):
+            sys.stderr.write(f"mlx_tts: clone mode needs an existing --ref-audio (got {args.ref_audio!r})\n")
+            return 2
+        if args.clone_mode == "icl" and args.ref_text.strip() == "":
+            sys.stderr.write("mlx_tts: cloneMode=icl needs --ref-text\n")
+            return 2
 
     from mlx_audio.tts.utils import load_model
 
@@ -225,16 +236,30 @@ def main() -> int:
             for index, chunk in enumerate(chunks):
                 if state["cancel"].is_set():
                     break
-                for result in model.generate_custom_voice(
-                    text=chunk,
-                    speaker=voice,
-                    language=args.lang,
-                    temperature=args.temperature,
-                    top_p=args.top_p,
-                    top_k=args.top_k,
-                    stream=True,
-                    streaming_interval=0.32,
-                ):
+                if args.mode == "clone":
+                    generate = model.generate(
+                        text=chunk,
+                        language=args.lang,
+                        temperature=args.temperature,
+                        top_p=args.top_p,
+                        top_k=args.top_k,
+                        stream=True,
+                        streaming_interval=0.32,
+                        ref_audio=args.ref_audio,
+                        **({"ref_text": args.ref_text} if args.clone_mode == "icl" else {}),
+                    )
+                else:
+                    generate = model.generate_custom_voice(
+                        text=chunk,
+                        speaker=voice,
+                        language=args.lang,
+                        temperature=args.temperature,
+                        top_p=args.top_p,
+                        top_k=args.top_k,
+                        stream=True,
+                        streaming_interval=0.32,
+                    )
+                for result in generate:
                     if state["cancel"].is_set():
                         break
                     audio = np.asarray(result.audio, dtype=np.float32).reshape(-1)

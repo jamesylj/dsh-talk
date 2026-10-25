@@ -192,6 +192,10 @@ export class MlxEngine {
           '--temperature', String(this.resolved.mlxTemperature),
           '--top-p', String(this.resolved.mlxTopP),
           '--top-k', String(this.resolved.mlxTopK),
+          '--mode', this.resolved.mlxMode,
+          '--clone-mode', this.resolved.mlxCloneMode,
+          ...(this.resolved.mlxRefAudio === null ? [] : ['--ref-audio', this.resolved.mlxRefAudio]),
+          ...(this.resolved.mlxRefText === null ? [] : ['--ref-text', this.resolved.mlxRefText]),
         ],
         { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HF_HUB_OFFLINE: '1' } },
       )

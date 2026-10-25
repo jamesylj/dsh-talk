@@ -191,5 +191,17 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ tts: { mlx: { topP: 0 } } })).toThrow(/mlx\.topP/u)
     expect(() => resolveConfig({ tts: { mlx: { topK: 500 } } })).toThrow(/mlx\.topK/u)
   })
+
+  it('validates the mlx clone mode fields', () => {
+    const resolved = resolveConfig({ tts: { engine: 'mlx' } })
+    expect(resolved.mlxMode).toBe('custom')
+    expect(resolved.mlxCloneMode).toBe('xvector')
+    expect(resolved.mlxRefAudio).toBeNull()
+    expect(() => resolveConfig({ tts: { mlx: { mode: 'clone' } } })).toThrow(/mlx\.refAudio/u)
+    const clone = resolveConfig({ tts: { mlx: { mode: 'clone', refAudio: '/tmp/ref.wav' } } })
+    expect(clone.mlxMode).toBe('clone')
+    expect(clone.mlxRefAudio).toBe('/tmp/ref.wav')
+    expect(() => resolveConfig({ tts: { mlx: { mode: 'clone', refAudio: '/tmp/ref.wav', cloneMode: 'icl' } } })).toThrow(/mlx\.refText/u)
+  })
 })
 
