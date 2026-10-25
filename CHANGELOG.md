@@ -1,6 +1,37 @@
 # Changelog
 
+## [0.6.0-android.1] - 2026-10-26
+
+Android line of the plugin. Targets the DeepSeek Harness Android app
+(kernel `0.2.1-rc.2`, WebView UI). Breaking relative to `main` 0.5.x.
+
+### Changed
+
+- **MiniMax only.** The local MLX Qwen3-TTS Base engine, the resident Python
+  worker (`worker/mlx_tts.py`), the `ffplay`/`afplay` host players, the
+  MiniMax → MLX fallback and the optional audio export directory are removed.
+  The Android runtime has neither Apple-silicon MLX nor a host audio player.
+- **The Web UI plays the audio.** The host synthesizes the MP3 (SSE batches
+  concatenated) and queues it; the client drains `talk/pending` with a cursor,
+  decodes the base64 MP3 and plays it through one shared `<audio>` element.
+  The queue is bounded (6 utterances / 24 MiB), a 16 MiB audio cap applies per
+  utterance, an empty-id `talk/playLatest` falls back to the newest live
+  session, and the first pointer gesture unlocks WebView autoplay.
+- **Configuration reduced to 11 keys** (`tts.minimax.*`, `announce.enabled`,
+  `autoReply.*`, `maxSpeakChars`); the `speak` tool lost its `engine` argument
+  and the export fields; the settings tab keeps the MiniMax voice id and the
+  auto-reply switch.
+- **No subprocess.** The plugin injects only `tools`, declares only
+  `network:outbound`, and ships no worker script.
+
+### Fixed (inherited from main 0.5.3)
+
+- `talk/stop` names a real service method, the composer buttons take the session
+  id from the slot's `inject(sessionId)` argument, and interactive failures go
+  to `~/.dsh-talk/logs/diagnostics.log`.
+
 ## [0.5.3] - 2026-10-25
+
 
 ### Fixed
 

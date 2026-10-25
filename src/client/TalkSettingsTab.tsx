@@ -1,9 +1,9 @@
 /**
- * The simplified talk settings tab (id `talk` in `settings.plugins.tab`):
- * engine select (MiniMax / MLX), the MiniMax voice id, and the auto-reply
- * read-aloud switch, saved as one append-only profile-patch operation. The
- * switch mirrors the composer mode button's effective mode, so the two
- * controls always agree; saving persists the mode as the new default.
+ * The simplified talk settings tab (id `talk` in `settings.plugins.tab`): the
+ * MiniMax voice id and the auto-reply read-aloud switch, saved as one
+ * append-only profile-patch operation. The switch mirrors the composer mode
+ * button's effective mode, so the two controls always agree; saving persists
+ * the mode as the new default.
  *
  * @module dsh-talk/client/TalkSettingsTab
  */
@@ -36,7 +36,6 @@ export type TalkSettingsTabProps =
 export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
   const { status, applySettings, t } = props
   const [snapshot, setSnapshot] = useState<TalkStatus | undefined>(undefined)
-  const [engine, setEngine] = useState<TalkStatus['engine']>('minimax')
   const [voiceId, setVoiceId] = useState('')
   const [mode, setMode] = useState<TalkMode>('auto')
   const [note, setNote] = useState<string | undefined>(undefined)
@@ -47,7 +46,6 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
     void status().then(value => {
       if (cancelled) return
       setSnapshot(value)
-      setEngine(value.engine)
       setVoiceId(value.voiceId)
       setMode(value.mode)
     }).catch(() => {})
@@ -60,7 +58,7 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
 
   const save = (): void => {
     setFailed(false)
-    void applySettings({ engine, voiceId: voiceId.trim(), autoReplyEnabled: mode === 'auto' }).then(result => {
+    void applySettings({ voiceId: voiceId.trim(), autoReplyEnabled: mode === 'auto' }).then(result => {
       setNote(result.note)
     }).catch(() => {
       setFailed(true)
@@ -70,13 +68,6 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
 
   return (
     <div data-dsh-talk-settings>
-      <label>
-        {t('engine')}
-        <select value={engine} onChange={event => setEngine(event.target.value as TalkStatus['engine'])}>
-          <option value="minimax">minimax</option>
-          <option value="mlx">mlx</option>
-        </select>
-      </label>
       <label>
         {t('voiceId')}
         <input type="text" value={voiceId} onChange={event => setVoiceId(event.target.value)} />

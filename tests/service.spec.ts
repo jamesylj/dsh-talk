@@ -1,11 +1,10 @@
 /**
- * Service pipeline: engine selection, MiniMax → MLX fallback, manual
- * play-latest, scoped stop, export and status.
+ * Service pipeline: MiniMax synthesis, the utterance queue the Web UI drains,
+ * manual play-latest, scoped stop, the runtime mode and session resolution.
  *
  * @module dsh-talk/test/service.spec
  */
 
-import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { EngineFailure } from '../src/engine.ts'
 import type { TalkService } from '../src/service.ts'
@@ -13,7 +12,7 @@ import { TALK_INVOCATIONS } from '../src/wire.ts'
 import { appendAssistantMessage, mountHarness, speechEventsOf } from './harness.ts'
 
 interface SynthResult {
-  mime: 'audio/mpeg' | 'audio/wav'
+  mime: 'audio/mpeg'
   data: Uint8Array
   audioSec: number
 }
@@ -27,163 +26,55 @@ function installMinimax(service: TalkService, engine: FakeEngine): void {
   ;(service as unknown as { minimaxEngine: FakeEngine }).minimaxEngine = engine
 }
 
-/** Install a fake MLX engine on the private field (tests only). */
-function installMlx(service: TalkService, engine: FakeEngine): void {
-  ;(service as unknown as { mlxEngine: FakeEngine }).mlxEngine = engine
-}
+const okResult = (): SynthResult => ({ mime: 'audio/mpeg', data: new Uint8Array([1, 2, 3]), audioSec: 1.5 })
 
-const okResult = (mime: SynthResult['mime']): SynthResult => ({ mime, data: new Uint8Array([1, 2, 3]), audioSec: 1.5 })
-
-describe('TalkService.speak', () => {
-  it('speaks through the configured MiniMax engine and logs the utterance', async () => {
+describe('TalkService.speak + pending queue', () => {
+  it('synthesizes, logs the utterance and queues the MP3 for the client', async () => {
     const harness = await mountHarness({})
-    installMinimax(harness.service, { synthesize: async () => okResult('audio/mpeg') })
+    installMinimax(harness.service, { synthesize: async () => okResult() })
     const outcome = await harness.service.speak('你好', { reason: 'manual', session: harness.session })
     expect(outcome).toMatchObject({ spoken: true, engine: 'minimax', audioBytes: 3 })
-    const events = speechEventsOf(harness.session)
-    expect(events).toHaveLength(1)
-    expect(events[0]?.data).toMatchObject({ engine: 'minimax', reason: 'manual', audioBytes: 3 })
+    expect(speechEventsOf(harness.session)).toHaveLength(1)
+
+    const pending = harness.service.pending(0)
+    expect(pending.items).toHaveLength(1)
+    expect(pending.items[0]).toMatchObject({
+      sessionId: String(harness.session.id),
+      text: '你好',
+      mime: 'audio/mpeg',
+      audioBase64: Buffer.from([1, 2, 3]).toString('base64'),
+      bytes: 3,
+    })
+    expect(pending.cursor).toBeGreaterThan(0)
     await harness.ctx.fiber.dispose()
   })
 
-  it('falls back to MLX when MiniMax fails and a reference WAV is configured', async () => {
-    const harness = await mountHarness({ tts: { mlx: { refAudio: '/tmp/ref.wav' } } })
+  it('returns no audio for a baseline or stale cursor', async () => {
+    const harness = await mountHarness({})
+    installMinimax(harness.service, { synthesize: async () => okResult() })
+    await harness.service.speak('你好', { reason: 'manual', session: harness.session })
+    expect(harness.service.pending(-1).items).toEqual([])
+    expect(harness.service.pending(999).items).toEqual([])
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('reports a synthesis failure without queueing anything', async () => {
+    const harness = await mountHarness({})
     installMinimax(harness.service, { synthesize: async () => { throw new EngineFailure('minimax: boom', false) } })
-    let sawMlx = false
-    installMlx(harness.service, {
-      synthesize: async () => {
-        sawMlx = true
-        return okResult('audio/wav')
-      },
-    })
-    const outcome = await harness.service.speak('你好', { reason: 'auto-reply', session: harness.session })
-    expect(sawMlx).toBe(true)
-    expect(outcome).toMatchObject({ spoken: true, engine: 'mlx' })
-    await harness.ctx.fiber.dispose()
-  })
-
-  it('does not fall back on an interruption', async () => {
-    const harness = await mountHarness({ tts: { mlx: { refAudio: '/tmp/ref.wav' } } })
-    installMinimax(harness.service, { synthesize: async () => { throw new EngineFailure('minimax: interrupted', true) } })
-    let sawMlx = false
-    installMlx(harness.service, { synthesize: async () => { sawMlx = true; return okResult('audio/wav') } })
     const outcome = await harness.service.speak('你好', { reason: 'manual', session: harness.session })
-    expect(sawMlx).toBe(false)
-    expect(outcome).toMatchObject({ spoken: false, error: 'interrupted' })
-    await harness.ctx.fiber.dispose()
-  })
-
-  it('writes the export file when tts.export.enabled is on', async () => {
-    const harness = await mountHarness({ tts: { export: { enabled: true } } })
-    installMinimax(harness.service, { synthesize: async () => okResult('audio/mpeg') })
-    const outcome = await harness.service.speak('你好', { reason: 'manual', session: harness.session })
-    expect(outcome.audioExport).toBe('file')
-    expect(outcome.audioPath).toBeDefined()
-    const bytes = await readFile(outcome.audioPath as string)
-    expect([...bytes]).toEqual([1, 2, 3])
-    await harness.ctx.fiber.dispose()
-  })
-})
-
-describe('TalkService.playLatest', () => {
-  it('reads the newest assistant reply of the session', async () => {
-    const harness = await mountHarness({})
-    appendAssistantMessage(harness.session, 1, '这是最近一条回复。')
-    let spoken = ''
-    installMinimax(harness.service, {
-      synthesize: async text => {
-        spoken = text
-        return okResult('audio/mpeg')
-      },
-    })
-    const result = await harness.service.playLatest(String(harness.session.id))
-    expect(result.spoken).toBe(true)
-    expect(result.engine).toBe('minimax')
-    expect(spoken).toContain('最近一条回复')
-    await harness.ctx.fiber.dispose()
-  })
-
-  it('reports a no-op when no reply exists or the session is unknown', async () => {
-    const harness = await mountHarness({})
-    await expect(harness.service.playLatest(String(harness.session.id))).resolves.toMatchObject({ spoken: false, engine: null })
-    await expect(harness.service.playLatest('missing')).resolves.toMatchObject({ spoken: false, error: 'session not found' })
+    expect(outcome).toMatchObject({ spoken: false, engine: 'minimax', error: 'minimax: boom' })
+    expect(harness.service.pending(0).items).toEqual([])
     await harness.ctx.fiber.dispose()
   })
 })
 
 describe('TalkService.stop', () => {
-  it('aborts an in-flight synthesis and reports that it stopped', async () => {
+  it('aborts in-flight synthesis and drops queued utterances', async () => {
     const harness = await mountHarness({})
-    let rejectSynth: ((error: Error) => void) | undefined
-    installMinimax(harness.service, {
-      synthesize: async (_text, signal) => await new Promise<SynthResult>((_resolve, reject) => {
-        rejectSynth = reject
-        signal.addEventListener('abort', () => reject(new EngineFailure('minimax: interrupted', true)), { once: true })
-      }),
-    })
-    const pending = harness.service.speak('你好', { reason: 'manual', session: harness.session })
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(harness.service.status().speaking).toBe(true)
-    const stopped = harness.service.interrupt()
-    expect(stopped.stopped).toBe(true)
-    rejectSynth?.(new EngineFailure('minimax: interrupted', true))
-    await expect(pending).resolves.toMatchObject({ spoken: false, error: 'interrupted' })
-    expect(harness.service.status().speaking).toBe(false)
-    await harness.ctx.fiber.dispose()
-  })
-})
+    installMinimax(harness.service, { synthesize: async () => okResult() })
+    await harness.service.speak('先念这句', { reason: 'manual', session: harness.session })
+    expect(harness.service.pending(0).items).toHaveLength(1)
 
-describe('TalkService.status', () => {
-  it('reports the configured engine, voice and effective mode', async () => {
-    const harness = await mountHarness({ autoReply: { enabled: false }, tts: { minimax: { voiceId: 'female-yujie' } } })
-    expect(harness.service.status()).toEqual({
-      engine: 'minimax',
-      speaking: false,
-      voiceId: 'female-yujie',
-      mode: 'manual',
-    })
-    await harness.ctx.fiber.dispose()
-  })
-})
-
-describe('TalkService.applyMode', () => {
-  it('defaults to auto, flips at runtime and never touches the configured default', async () => {
-    const harness = await mountHarness({})
-    expect(harness.service.status().mode).toBe('auto')
-    expect(harness.service.applyMode('manual')).toEqual({ mode: 'manual' })
-    expect(harness.service.status().mode).toBe('manual')
-    expect(harness.service.applyMode('auto')).toEqual({ mode: 'auto' })
-    expect(harness.service.status().mode).toBe('auto')
-    await harness.ctx.fiber.dispose()
-  })
-
-  it('keeps manual playback working while the mode is manual', async () => {
-    const harness = await mountHarness({ autoReply: { enabled: false } })
-    expect(harness.service.mode()).toBe('manual')
-    appendAssistantMessage(harness.session, 1, '手动播报的回复。')
-    let spoken = ''
-    installMinimax(harness.service, {
-      synthesize: async text => {
-        spoken = text
-        return okResult('audio/mpeg')
-      },
-    })
-    await expect(harness.service.playLatest(String(harness.session.id))).resolves.toMatchObject({ spoken: true, engine: 'minimax' })
-    expect(spoken).toContain('手动播报的回复')
-    await harness.ctx.fiber.dispose()
-  })
-
-  it('rejects a mode outside the wire vocabulary and keeps the previous mode', async () => {
-    const harness = await mountHarness({})
-    expect(() => harness.service.applyMode('sometimes' as never)).toThrow(/mode must be one of/)
-    expect(harness.service.status().mode).toBe('auto')
-    await harness.ctx.fiber.dispose()
-  })
-})
-
-describe('TalkService.stop', () => {
-  it('aborts in-flight playback through the talk/stop verb', async () => {
-    const harness = await mountHarness({})
     let rejectSynth: ((error: Error) => void) | undefined
     installMinimax(harness.service, {
       synthesize: async (_text, signal) => await new Promise<SynthResult>((_resolve, reject) => {
@@ -198,6 +89,7 @@ describe('TalkService.stop', () => {
     rejectSynth?.(new EngineFailure('minimax: interrupted', true))
     await expect(pending).resolves.toMatchObject({ spoken: false, error: 'interrupted' })
     expect(harness.service.isSpeaking()).toBe(false)
+    expect(harness.service.pending(0).items).toEqual([])
     await harness.ctx.fiber.dispose()
   })
 
@@ -208,25 +100,56 @@ describe('TalkService.stop', () => {
   })
 })
 
-describe('TalkService.playLatest session resolution', () => {
-  it('falls back to the newest live session when the client sends an empty id', async () => {
+describe('TalkService.playLatest', () => {
+  it('synthesizes the newest assistant reply of the session', async () => {
     const harness = await mountHarness({})
-    appendAssistantMessage(harness.session, 1, '最新一条回复。')
+    appendAssistantMessage(harness.session, 1, '这是最近一条回复。')
     let spoken = ''
     installMinimax(harness.service, {
       synthesize: async text => {
         spoken = text
-        return okResult('audio/mpeg')
+        return okResult()
       },
     })
-    await expect(harness.service.playLatest('')).resolves.toMatchObject({ spoken: true, engine: 'minimax' })
-    expect(spoken).toContain('最新一条回复')
+    const result = await harness.service.playLatest(String(harness.session.id))
+    expect(result).toMatchObject({ spoken: true, engine: 'minimax' })
+    expect(spoken).toContain('最近一条回复')
+    expect(harness.service.pending(0).items[0]?.text).toContain('最近一条回复')
     await harness.ctx.fiber.dispose()
   })
 
-  it('reports an unknown id as session not found', async () => {
+  it('falls back to the newest live session when the id is empty', async () => {
     const harness = await mountHarness({})
+    appendAssistantMessage(harness.session, 1, '最新一条回复。')
+    installMinimax(harness.service, { synthesize: async () => okResult() })
+    await expect(harness.service.playLatest('')).resolves.toMatchObject({ spoken: true })
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('reports a no-op when the session or the reply is missing', async () => {
+    const harness = await mountHarness({})
+    await expect(harness.service.playLatest(String(harness.session.id))).resolves.toMatchObject({ spoken: false, engine: null })
     await expect(harness.service.playLatest('missing')).resolves.toMatchObject({ spoken: false, error: 'session not found' })
+    await harness.ctx.fiber.dispose()
+  })
+})
+
+describe('TalkService.mode', () => {
+  it('defaults from autoReply.enabled and flips at runtime', async () => {
+    const harness = await mountHarness({})
+    expect(harness.service.status().mode).toBe('auto')
+    expect(harness.service.applyMode('manual')).toEqual({ mode: 'manual' })
+    expect(harness.service.status().mode).toBe('manual')
+    expect(harness.service.applyMode('auto')).toEqual({ mode: 'auto' })
+    expect(harness.service.status().mode).toBe('auto')
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('honours a configured manual default and rejects an unknown mode', async () => {
+    const harness = await mountHarness({ autoReply: { enabled: false } })
+    expect(harness.service.mode()).toBe('manual')
+    expect(() => harness.service.applyMode('sometimes' as never)).toThrow(/mode must be one of/u)
+    expect(harness.service.status().mode).toBe('manual')
     await harness.ctx.fiber.dispose()
   })
 })

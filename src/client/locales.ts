@@ -14,7 +14,6 @@ export type TalkLocaleKey =
   | 'nothingToRead'
   | 'modeAuto'
   | 'modeManual'
-  | 'engine'
   | 'voiceId'
   | 'autoReplyEnabled'
   | 'save'
@@ -30,7 +29,6 @@ export const en: Record<TalkLocaleKey, string> = {
   nothingToRead: 'No reply to read yet',
   modeAuto: 'Auto',
   modeManual: 'Manual',
-  engine: 'Text-to-speech engine',
   voiceId: 'MiniMax voice id',
   autoReplyEnabled: 'Read replies aloud automatically',
   save: 'Save settings',
@@ -47,7 +45,6 @@ export const zh: Record<TalkLocaleKey, string> = {
   nothingToRead: '还没有可朗读的回复',
   modeAuto: '自动',
   modeManual: '手动',
-  engine: '文字转语音引擎',
   voiceId: 'MiniMax 音色 ID',
   autoReplyEnabled: '自动朗读助手回复',
   save: '保存设置',

@@ -1,5 +1,5 @@
 /**
- * Settings write-back: the settings panel's engine/language changes are
+ * Settings write-back: the settings panel's voice/auto-reply changes are
  * rendered as ONE append-only row operation against the profile's
  * `cordis.patch.yml` (the same append-with-backup discipline as the loader
  * patch vocabulary). The plugin never rewrites the file: user comments and
@@ -13,7 +13,7 @@
 import { copyFile, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Config } from './config.ts'
-import { TTS_ENGINES, type TalkSettingsInput } from './wire.ts'
+import type { TalkSettingsInput } from './wire.ts'
 
 /** Backup filename suffix: `<file>.bak-<epoch-ms>`. */
 const BACKUP_SUFFIX = '.bak-'
@@ -33,7 +33,7 @@ export const TALK_PACKAGE_NAME = 'dsh-talk'
 /** One validation error, code + human text (the client localizes the code). */
 export interface TalkSettingsIssue {
   /** Stable error code (locale keys derive from it). */
-  code: 'tts-engine-invalid' | 'voice-id-invalid' | 'settings-malformed'
+  code: 'voice-id-invalid' | 'settings-malformed'
   /** English explanation (fallback text on every surface). */
   text: string
 }
@@ -59,10 +59,6 @@ export function validateSettingsInput(input: unknown): TalkSettingsValidation {
   }
   const value = input as Record<string, unknown>
   const issues: TalkSettingsIssue[] = []
-  const engine = value['engine']
-  if (engine !== undefined && !(TTS_ENGINES as readonly unknown[]).includes(engine)) {
-    issues.push({ code: 'tts-engine-invalid', text: 'engine must be one of minimax | mlx.' })
-  }
   const voiceId = value['voiceId']
   if (voiceId !== undefined && (typeof voiceId !== 'string' || voiceId.trim() === '')) {
     issues.push({ code: 'voice-id-invalid', text: 'voiceId must be a non-empty string.' })
@@ -75,7 +71,6 @@ export function validateSettingsInput(input: unknown): TalkSettingsValidation {
   return {
     ok: true,
     settings: {
-      ...(engine !== undefined ? { engine: engine as TalkSettingsInput['engine'] } : {}),
       ...(typeof voiceId === 'string' ? { voiceId } : {}),
       ...(autoReplyEnabled === true || autoReplyEnabled === false ? { autoReplyEnabled } : {}),
     },
@@ -105,7 +100,6 @@ export function mergeTalkRowConfig(rawConfig: Config | undefined, settings: Talk
   const autoReply = (typeof merged['autoReply'] === 'object' && merged['autoReply'] !== null && !Array.isArray(merged['autoReply']))
     ? { ...(merged['autoReply'] as Record<string, unknown>) }
     : {}
-  if (settings.engine !== undefined) tts['engine'] = settings.engine
   if (settings.voiceId !== undefined) minimax['voiceId'] = settings.voiceId
   if (settings.autoReplyEnabled !== undefined) autoReply['enabled'] = settings.autoReplyEnabled
   tts['minimax'] = minimax

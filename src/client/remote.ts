@@ -12,6 +12,7 @@ import { TALK_INVOCATIONS } from '../wire.ts'
 import type {
   TalkMode,
   TalkModeResult,
+  TalkPendingResult,
   TalkPlayResult,
   TalkSettingsInput,
   TalkSettingsResult,
@@ -21,16 +22,18 @@ import type {
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$talk {
-    /** Read-only state snapshot (engine, speaking, voice, mode). */
+    /** Read-only state snapshot (synthesizing, voice, mode). */
     status: () => Promise<RemoteResult<TalkStatus>>
-    /** Read the newest assistant reply of one session aloud on the host. */
+    /** Synthesize the newest assistant reply of one session and queue it. */
     playLatest: (sessionId: string) => Promise<RemoteResult<TalkPlayResult>>
-    /** Stop in-flight host playback. */
+    /** Abort host synthesis and drop queued utterances. */
     stop: () => Promise<RemoteResult<TalkStopResult>>
     /** Switch the auto/manual read-aloud mode at runtime. */
     applyMode: (mode: TalkMode) => Promise<RemoteResult<TalkModeResult>>
     /** Apply the settings panel's edits as an append-only profile patch operation. */
     applySettings: (settings: TalkSettingsInput) => Promise<RemoteResult<TalkSettingsResult>>
+    /** Drain the utterance queue after `since` (`-1` = baseline). */
+    pending: (since: number) => Promise<RemoteResult<TalkPendingResult>>
   }
   interface TypertRemoteMap {
     'talk/status': () => Promise<RemoteResult<TalkStatus>>
@@ -38,6 +41,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'talk/stop': () => Promise<RemoteResult<TalkStopResult>>
     'talk/applyMode': (mode: TalkMode) => Promise<RemoteResult<TalkModeResult>>
     'talk/applySettings': (settings: TalkSettingsInput) => Promise<RemoteResult<TalkSettingsResult>>
+    'talk/pending': (since: number) => Promise<RemoteResult<TalkPendingResult>>
   }
   interface TypertRemoteNamespaceMap {
     talk: TypertRemoteNamespace$talk

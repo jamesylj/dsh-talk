@@ -1,31 +1,32 @@
 /**
  * MiniMax cloud speech engine (`speech-2.8-turbo`) over the synchronous T2A
- * HTTP endpoint.
+ * HTTP endpoint — the only engine in the `android` branch.
  *
  * The endpoint streams hex-encoded MP3 chunks over Server-Sent Events
- * (`stream: true`). This engine decodes those chunks and writes them straight
- * into a host-side `ffplay` process, so the first word starts within a few
- * hundred milliseconds and a long reply plays as one continuous stream instead
- * of waiting for the whole synthesis. `tts.minimax.streaming: false` switches
- * to a buffered file + `afplay` instead (for hosts without ffplay).
+ * (`stream: true`). The Android runtime has no local audio player on the host,
+ * so this engine simply collects the MP3 and hands it to the talk service,
+ * which queues it for the Web UI to play in the WebView. Splitting long text
+ * into batched requests and concatenating the audio keeps one continuous
+ * utterance.
  *
- * Credentials resolve per utterance: explicit `tts.minimax.apiKey`, then
- * `$<apiKeyEnv>`, then the harness credential store (`refs:` in
- * `~/.dsh/.credentials.yaml`). The key is never logged.
+ * Credentials resolve per utterance: `$<apiKeyEnv>`, then the harness
+ * credential store (`refs:` in `~/.dsh/.credentials.yaml`). The key is never
+ * logged.
  *
  * @module dsh-talk/minimax
  */
 
 import { readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import type { Writable } from 'node:stream'
-import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type { ResolvedConfig } from './config.ts'
 import { EngineFailure } from './engine.ts'
 import { sanitizeText } from './sanitize.ts'
 
-/** Safety cap on one utterance's accumulated MP3 bytes (64 MiB ≈ 68 min at 128 kbps). */
-export const MINIMAX_MAX_AUDIO_BYTES = 64 * 1024 * 1024
+/**
+ * Safety cap on one utterance's accumulated MP3 bytes. The audio crosses the
+ * Remote channel as base64, so keep it well below WebSocket message limits:
+ * 16 MiB ≈ 17 minutes at 128 kbps.
+ */
+export const MINIMAX_MAX_AUDIO_BYTES = 16 * 1024 * 1024
 
 /** Largest accepted SSE line (a single hex chunk) before the stream is treated as broken. */
 const MINIMAX_MAX_SSE_LINE = 96 * 1024 * 1024
@@ -39,14 +40,11 @@ const MINIMAX_SAMPLE_RATE = 32_000
 /** Fixed language boost for the Mandarin voices this engine ships with. */
 const MINIMAX_LANGUAGE_BOOST = 'Chinese'
 
-/** CLI shape of `ffplay` reading MP3 from stdin on the default audio device. */
-const FFPLAY_ARGS = ['-hide_banner', '-loglevel', 'error', '-nodisp', '-autoexit', '-'] as const
-
 /** Outcome of one MiniMax synthesis. */
 export interface MinimaxSynthResult {
   /** MIME type of the produced audio. */
   mime: 'audio/mpeg'
-  /** The complete MP3 bytes that were played. */
+  /** The complete MP3 bytes. */
   data: Uint8Array
   /** Audio duration in seconds (from the API's `extra_info`). */
   audioSec: number
@@ -107,7 +105,7 @@ export function splitMinimaxText(text: string, maxChars: number): readonly strin
  *
  * @param resolved - resolved plugin config.
  * @param text - batch text.
- * @param voiceId - voice id (tool override, global voice, or configured id).
+ * @param voiceId - voice id (tool override or the configured id).
  * @param stream - whether to ask for SSE streaming.
  * @returns the JSON body.
  */
@@ -210,10 +208,10 @@ export function parseCredentialRefs(yaml: string): Record<string, string> {
 }
 
 /**
- * Resolve the API key for one synthesis attempt: explicit config, then the
- * environment variable named by `tts.minimax.apiKeyEnv`, then the harness
- * credential store. Never caches across utterances, so a key set while the
- * profile runs reaches the next utterance.
+ * Resolve the API key for one synthesis attempt: the environment variable
+ * named by `tts.minimax.apiKeyEnv`, then the harness credential store. Never
+ * cached across utterances, so a key set while the profile runs reaches the
+ * next utterance.
  *
  * @param resolved - resolved plugin config.
  * @returns the key, or null when nothing is configured.
@@ -237,50 +235,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Read one collected stderr tail as redacted single-line text. */
-function stderrTail(handle: SubprocessHandle): string {
-  try {
-    return sanitizeText(handle.collected.stderr?.readFrom(0).text ?? '', 300).trim()
-  } catch {
-    return ''
-  }
-}
-
-/** Write one chunk to a child's stdin, honoring backpressure and write errors. */
-function writeChunk(stream: Writable, chunk: Uint8Array): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (stream.destroyed || stream.writableEnded) {
-      reject(new Error('the player is no longer accepting audio'))
-      return
-    }
-    try {
-      stream.write(chunk, error => (error === null || error === undefined ? resolve() : reject(error)))
-    } catch (error) {
-      reject(error instanceof Error ? error : new Error(String(error)))
-    }
-  })
-}
-
 /**
- * MiniMax T2A engine: streams SSE MP3 chunks into `ffplay` (or buffers the
- * whole utterance for `afplay`), and returns the complete MP3 so the service
- * can cache/export it like any other host-synthesized utterance.
+ * MiniMax T2A engine: streams SSE MP3 chunks for each batch, concatenates them
+ * into one utterance, and returns the complete MP3 for the client to play.
  */
 export class MinimaxEngine {
   /**
-   * @param subprocess - the subprocess service (player process + buffered afplay).
    * @param resolved - resolved plugin config.
    */
-  constructor(
-    private readonly subprocess: SubprocessRuntime,
-    private readonly resolved: ResolvedConfig,
-  ) {}
+  constructor(private readonly resolved: ResolvedConfig) {}
 
   /**
-   * Synthesize and play one utterance.
+   * Synthesize one utterance.
    *
    * @param text - sanitized text to speak.
-   * @param voiceOverride - per-call voice id; unset falls back to `tts.voice` / `tts.minimax.voiceId`.
    * @param signal - caller abort signal (interruption).
    * @returns the complete MP3 bytes and its duration.
    */
@@ -289,7 +257,7 @@ export class MinimaxEngine {
     const apiKey = await resolveMinimaxApiKey(this.resolved)
     if (apiKey === null) {
       throw new EngineFailure(
-        `minimax: no API key; set $${this.resolved.minimaxApiKeyEnv} (or tts.minimax.apiKey / the harness credential store)`,
+        `minimax: no API key; set $${this.resolved.minimaxApiKeyEnv} (or the harness credential store's refs: section)`,
         false,
       )
     }
@@ -306,9 +274,10 @@ export class MinimaxEngine {
       }
       pieces.push(chunk)
     }
-
-    audioSec = await this.streamToPlayer(batches, voiceId, apiKey, signal, onAudio)
-
+    for (const batch of batches) {
+      if (signal.aborted) throw new EngineFailure('minimax: interrupted', true)
+      audioSec += await this.collectBatch(batch, voiceId, apiKey, signal, onAudio)
+    }
     const data = this.concat(pieces)
     return {
       mime: 'audio/mpeg',
@@ -334,88 +303,6 @@ export class MinimaxEngine {
   }
 
   /**
-   * Spawn `ffplay` and feed every batch's SSE audio into its stdin, keeping one
-   * continuous playback stream across batch boundaries.
-   *
-   * @returns total audio seconds.
-   */
-  private async streamToPlayer(
-    batches: readonly string[],
-    voiceId: string,
-    apiKey: string,
-    signal: AbortSignal,
-    onAudio: (chunk: Uint8Array) => Promise<void>,
-  ): Promise<number> {
-    const player = this.resolved.minimaxPlayer
-    let handle: SubprocessHandle
-    try {
-      handle = this.subprocess.spawn({
-        argv: [player, ...FFPLAY_ARGS],
-        cwd: tmpdir(),
-        stdio: {
-          stdin: 'pipe',
-          // ffplay with -nodisp writes nothing useful to stdout; keep a tiny
-          // collected tail so the seam stays explicit without buffering.
-          stdout: { maxBytes: 1024 },
-          stderr: { maxBytes: 16 * 1024 },
-        },
-        graceMs: 3_000,
-        signal,
-      })
-    } catch (error) {
-      throw this.failure(
-        `cannot start ${player} (${error instanceof Error ? error.message : String(error)}); install ffmpeg or set tts.minimax.streaming=false`,
-        signal,
-      )
-    }
-    const stdin = handle.stdin
-    if (stdin === undefined) {
-      handle.terminate()
-      throw this.failure(`${player} was spawned without a writable stdin`, signal)
-    }
-    // A player that dies mid-stream makes the pending stdin writes fail with
-    // EPIPE. Without a listener that error is emitted as an uncaught exception
-    // and takes the whole host down (observed as `dsh: fatal uncaught
-    // exception: Error: write EPIPE`), so consume it here and let writeChunk
-    // report it as a normal engine failure instead.
-    let stdinError: Error | null = null
-    stdin.on('error', (error: Error) => {
-      stdinError ??= error
-    })
-    let audioSec = 0
-    try {
-      for (const batch of batches) {
-        if (signal.aborted) throw this.interruption(signal)
-        audioSec += await this.collectBatch(batch, voiceId, apiKey, signal, async chunk => {
-          if (stdinError !== null) throw this.failure(`player stdin failed: ${stdinError.message}`, signal)
-          await onAudio(chunk)
-          await writeChunk(stdin, chunk)
-        })
-      }
-      try {
-        if (!stdin.writableEnded && !stdin.destroyed) stdin.end()
-      } catch {
-        // The player already exited; `handle.done` below owns the outcome.
-      }
-      const outcome = await handle.done.catch(() => null)
-      if (signal.aborted) throw this.interruption(signal)
-      if (outcome === null || outcome.exitCode !== 0) {
-        const detail = stderrTail(handle)
-        throw this.failure(
-          `${player} exited ${outcome === null ? 'without a status' : String(outcome.exitCode)}${detail === '' ? '' : `: ${detail}`}`,
-          signal,
-        )
-      }
-      return audioSec
-    } catch (error) {
-      if (!signal.aborted) handle.terminate()
-      throw error instanceof EngineFailure ? error : this.failure(error instanceof Error ? error.message : String(error), signal)
-    } finally {
-      if (!stdin.destroyed) stdin.destroy()
-    }
-  }
-
-  /**
    * Read one batch's SSE stream, forwarding each audio chunk to `onAudio` and
    * returning the batch's audio duration in seconds.
    */
@@ -427,10 +314,7 @@ export class MinimaxEngine {
     onAudio: (chunk: Uint8Array) => Promise<void>,
   ): Promise<number> {
     // The request timeout is an IDLE budget, not a total one: a long reply is
-    // fed into realtime playback, so the player's backpressure can spread one
-    // SSE read over several minutes while data is still flowing. Every network
-    // read and every completed player write resets the clock; only a genuine
-    // stall (no progress for the whole budget) fails the utterance.
+    // synthesized over many batches, so only a genuine stall fails it.
     const idleMs = this.resolved.minimaxRequestTimeoutMs
     const idle = new AbortController()
     let idleTimer: ReturnType<typeof setTimeout> | undefined
@@ -501,8 +385,6 @@ export class MinimaxEngine {
               else {
                 sawChunk = true
                 await onAudio(event.audio)
-                // A completed player write is progress too: backpressure from
-                // realtime playback must never look like a stalled network.
                 bump()
               }
             }
@@ -528,5 +410,4 @@ export class MinimaxEngine {
     if (!sawChunk && finalAudio === null) throw this.failure('response carried no audio', signal)
     return seconds
   }
-
 }

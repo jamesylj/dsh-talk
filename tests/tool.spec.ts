@@ -1,70 +1,55 @@
 /**
- * The `speak` tool: schema, canonical value (host playback, export state) and
- * the rendered model text.
+ * The `speak` tool: MiniMax-only schema, canonical value and render text.
  *
  * @module dsh-talk/test/tool.spec
  */
 
 import { describe, expect, it } from 'vitest'
-import { mountHarness } from './harness.ts'
+import { renderSpeak, speakTool } from '../src/tool.ts'
+import type { TalkService } from '../src/service.ts'
 
-describe('speak tool', () => {
-  it('keeps the model schema, canonical value and content blocks stable', async () => {
-    const harness = await mountHarness({})
-    try {
-      ;(harness.service as unknown as { minimaxEngine: unknown }).minimaxEngine = {
-        synthesize: async () => ({ mime: 'audio/mpeg', data: new Uint8Array([1, 2, 3]), audioSec: 2 }),
-      }
-      const schema = harness.ctx.tools.schemas().find(entry => entry.name === 'speak')
-      expect(schema).toBeDefined()
-      expect(schema!.parameters).toMatchObject({
-        type: 'object',
-        properties: {
-          text: { type: 'string' },
-          engine: { type: 'string', enum: ['minimax', 'mlx'] },
-        },
-      })
-      expect(schema!.parameters.required).toContain('text')
+/** A service double whose speak() answers from a scripted outcome. */
+function fakeService(outcome: Record<string, unknown>): TalkService {
+  return {
+    async speak() {
+      return outcome
+    },
+  } as unknown as TalkService
+}
 
-      const result = await harness.ctx.tools.execute({
-        callId: 'dsh-talk-speak-tool' as unknown as Parameters<typeof harness.ctx.tools.execute>[0]['callId'],
-        name: 'speak',
-        arguments: { text: 'hello' },
-        agent: harness.agent,
-        signal: new AbortController().signal,
-      })
-      expect(result.isError).toBe(false)
-      expect(result.value).toMatchObject({ spoken: true, engine: 'minimax', audioBytes: 3, audioExport: 'disabled' })
-      expect(result.content).toEqual([{
-        type: 'text',
-        text: 'Spoke hello aloud with the minimax engine. No audio file: audio file export is disabled (tts.export.enabled = false).',
-      }])
-    } finally {
-      await harness.ctx.fiber.dispose()
-    }
+describe('speakTool', () => {
+  it('declares only the text parameter and the MiniMax outcome fields', () => {
+    const tool = speakTool(fakeService({ spoken: true, engine: 'minimax', audioBytes: 3 }), 100)
+    const parameters = tool.parameters as unknown as { properties: Record<string, unknown>; required: readonly string[] }
+    expect(Object.keys(parameters.properties)).toEqual(['text'])
+    expect(parameters.required).toEqual(['text'])
   })
 
-  it('reports a failed synthesis instead of throwing', async () => {
-    const harness = await mountHarness({})
-    try {
-      ;(harness.service as unknown as { minimaxEngine: unknown }).minimaxEngine = {
-        synthesize: async () => {
-          const { EngineFailure } = await import('../src/engine.ts')
-          throw new EngineFailure('minimax: boom', false)
-        },
-      }
-      const result = await harness.ctx.tools.execute({
-        callId: 'dsh-talk-speak-fail' as unknown as Parameters<typeof harness.ctx.tools.execute>[0]['callId'],
-        name: 'speak',
-        arguments: { text: 'hello' },
-        agent: harness.agent,
-        signal: new AbortController().signal,
-      })
-      expect(result.isError).toBe(false)
-      expect(result.value).toMatchObject({ spoken: false, error: 'minimax: boom' })
-      expect(result.content).toEqual([{ type: 'text', text: 'Speech failed with the minimax engine: minimax: boom.' }])
-    } finally {
-      await harness.ctx.fiber.dispose()
-    }
+  it('executes through the service and returns its canonical value', async () => {
+    const tool = speakTool(fakeService({ spoken: true, engine: 'minimax', audioBytes: 3, durationSec: 1.5 }), 100)
+    const value = await (tool as unknown as { execute: (args: { text: string }, exec: unknown) => Promise<unknown> }).execute(
+      { text: 'hello' },
+      { signal: new AbortController().signal },
+    )
+    expect(value).toMatchObject({ spoken: true, engine: 'minimax', audioBytes: 3 })
+  })
+
+  it('rejects empty and oversized text', async () => {
+    const tool = speakTool(fakeService({ spoken: true }), 5)
+    const execute = (tool as unknown as { execute: (args: { text: string }, exec: unknown) => Promise<unknown> }).execute
+    await expect(execute({ text: '   ' }, {})).rejects.toThrow(/must not be empty/u)
+    await expect(execute({ text: '123456' }, {})).rejects.toThrow(/character cap/u)
+  })
+})
+
+describe('renderSpeak', () => {
+  it('renders a spoken outcome', () => {
+    expect(renderSpeak({ text: 'hi' }, { spoken: true, engine: 'minimax', durationSec: 1.25 }))
+      .toEqual([{ type: 'text', text: 'Spoke hi aloud with the minimax engine, 1.3s of audio.' }])
+  })
+
+  it('renders a failed outcome', () => {
+    expect(renderSpeak({ text: 'hi' }, { spoken: false, engine: 'minimax', error: 'minimax: boom' }))
+      .toEqual([{ type: 'text', text: 'Speech failed with the minimax engine: minimax: boom.' }])
   })
 })

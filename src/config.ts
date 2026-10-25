@@ -1,14 +1,12 @@
 /**
- * Plugin configuration and its explicit resolve step. `resolveConfig` re-judges
- * every default and bound so programmatic construction that bypasses
- * Schemastery normalization still fails loud instead of running with hidden
- * defaults (the explicit-resolve contract).
+ * `android` branch configuration: MiniMax cloud TTS only.
  *
- * v0.5 keeps exactly two host-played TTS engines — MiniMax (`speech-2.8-turbo`
- * over SSE → ffplay) and the local MLX Qwen3-TTS Base model with x-vector
- * voice cloning — plus auto-reply, the turn-end announcement and the optional
- * audio export. Everything else (STT/microphone, edge-tts, piper, macOS `say`,
- * browser voice, settings write-back) was removed.
+ * The Android build of DeepSeek Harness has no Apple-silicon MLX runtime and no
+ * local audio player on the host, so exactly one engine remains: the MiniMax
+ * synchronous T2A endpoint. Audio is synthesized on the host and handed to the
+ * Web UI, which plays it in the WebView. `resolveConfig` re-judges every default
+ * and bound so programmatic construction fails loud instead of running with
+ * hidden defaults.
  *
  * @module dsh-talk/config
  */
@@ -16,10 +14,6 @@
 import z from '@deepseek-ai/schemastery'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { resolveExportDir } from './audio-export.ts'
-
-/** Text-to-speech engines. Both play on the host, never in the browser. */
-export type TtsEngine = 'minimax' | 'mlx'
 
 /** Default speak-tool text cap in characters. */
 export const DEFAULT_MAX_SPEAK_CHARS = 20_000
@@ -41,9 +35,6 @@ export const DEFAULT_MINIMAX_MODEL = 'speech-2.8-turbo'
 
 /** Default MiniMax Mandarin voice (温暖少女). */
 export const DEFAULT_MINIMAX_VOICE = 'Chinese (Mandarin)_Warm_Girl'
-
-/** Default streaming player for MiniMax playback (ffmpeg's ffplay reads MP3 from stdin). */
-export const DEFAULT_MINIMAX_PLAYER = 'ffplay'
 
 /** Default MiniMax batch size in characters (the API accepts < 10,000). */
 export const DEFAULT_MINIMAX_BATCH_CHARS = 2_000
@@ -69,12 +60,6 @@ export const DEFAULT_MINIMAX_API_KEY_ENV = 'MINIMAX_CN_API_KEY'
 /** Default harness credential store consulted when the environment variable is unset. */
 export const DEFAULT_MINIMAX_CREDENTIALS_FILE = join(homedir(), '.dsh', '.credentials.yaml')
 
-/** Default interpreter of the MLX TTS venv (`~/.dsh-talk/mlx-tts-venv`). */
-export const DEFAULT_MLX_COMMAND = join(homedir(), '.dsh-talk', 'mlx-tts-venv', 'bin', 'python')
-
-/** Default quantized Qwen3-TTS Base model directory (x-vector clone only). */
-export const DEFAULT_MLX_MODEL = join(homedir(), '.dsh-talk', 'models', 'qwen3-tts-0.6b-base-4bit')
-
 /** MiniMax engine configuration. */
 export interface TtsMinimaxConfig {
   /** Environment variable holding the API key (default "MINIMAX_CN_API_KEY"). */
@@ -87,46 +72,16 @@ export interface TtsMinimaxConfig {
   model?: string
   /** System voice id (default "Chinese (Mandarin)_Warm_Girl"). */
   voiceId?: string
-  /** Streaming player reading MP3 from stdin (default "ffplay"). */
-  player?: string
   /** Characters per API request; longer text splits at sentence boundaries (default 2000, 500..10000). */
   chunkChars?: number
-  /** Idle timeout: no network read or player write for this long fails the utterance (default 120000). */
+  /** Idle timeout: no network progress for this long fails the utterance (default 120000). */
   requestTimeoutMs?: number
-}
-
-/** MLX (Qwen3-TTS Base + x-vector clone) local engine configuration. */
-export interface TtsMlxConfig {
-  /** Python interpreter of the MLX venv (default `~/.dsh-talk/mlx-tts-venv/bin/python`). */
-  command?: string
-  /** Worker script path; unset = the bundled `worker/mlx_tts.py`. */
-  script?: string
-  /** Quantized Qwen3-TTS Base model directory (default `~/.dsh-talk/models/qwen3-tts-0.6b-base-4bit`). */
-  model?: string
-  /** Reference WAV cloned with x-vector only (required for the mlx engine and for the minimax fallback). */
-  refAudio?: string
-}
-
-/** Exported-audio lifecycle: the plugin-owned file directory. */
-export interface TtsExportConfig {
-  /** Write every host-synthesized utterance to a file (default false). */
-  enabled?: boolean
-  /** Target directory; empty = `<home>/.dsh-talk/audio`, `~` expands to home, a relative path resolves under home. */
-  dir?: string
 }
 
 /** Text-to-speech configuration. */
 export interface TtsConfig {
-  /** Engine selection: minimax | mlx (default minimax). */
-  engine?: TtsEngine
-  /** Fall back to the MLX clone engine when MiniMax fails (default true; needs `tts.mlx.refAudio`). */
-  fallback?: boolean
   /** MiniMax cloud TTS (speech-2.8-turbo); needs an API key. */
   minimax?: TtsMinimaxConfig
-  /** Local Qwen3-TTS Base clone engine (offline fallback). */
-  mlx?: TtsMlxConfig
-  /** Exported-audio files. */
-  export?: TtsExportConfig
 }
 
 /** Event announcement configuration. */
@@ -157,10 +112,6 @@ export interface Config {
 
 /** Fully resolved runtime policy. */
 export interface ResolvedConfig {
-  /** Resolved TTS engine. */
-  ttsEngine: TtsEngine
-  /** Fall back to MLX when MiniMax fails. */
-  ttsFallback: boolean
   /** Environment variable consulted for the MiniMax API key. */
   minimaxApiKeyEnv: string
   /** Harness credential store read for the MiniMax key, or null when disabled. */
@@ -171,24 +122,10 @@ export interface ResolvedConfig {
   minimaxModel: string
   /** MiniMax system voice id. */
   minimaxVoiceId: string
-  /** Streaming player reading MP3 from stdin. */
-  minimaxPlayer: string
   /** Characters per MiniMax API request. */
   minimaxChunkChars: number
   /** Idle timeout for one MiniMax batch (ms). */
   minimaxRequestTimeoutMs: number
-  /** Python interpreter of the MLX TTS venv. */
-  mlxCommand: string
-  /** Worker script path, or null for the bundled one. */
-  mlxScript: string | null
-  /** MLX model directory or HF repo id. */
-  mlxModel: string
-  /** x-vector reference WAV, or null when MLX is not configured. */
-  mlxRefAudio: string | null
-  /** Whether host-synthesized audio is also written to a file. */
-  ttsExportEnabled: boolean
-  /** Absolute directory exported audio lands in. */
-  ttsExportDir: string
   /** Whether the generic turn-end announcement is enabled. */
   announceEnabled: boolean
   /** Whether the assistant's final reply is read aloud automatically. */
@@ -202,27 +139,14 @@ export interface ResolvedConfig {
 /** Schemastery schema for loader-validated configuration. */
 export const Config: z<Config> = z.object({
   tts: z.object({
-    engine: z.union(['minimax', 'mlx'] as const).default('minimax'),
-    fallback: z.boolean().default(true),
     minimax: z.object({
       apiKeyEnv: z.string().default(DEFAULT_MINIMAX_API_KEY_ENV),
       credentialsFile: z.string().default(DEFAULT_MINIMAX_CREDENTIALS_FILE),
       baseUrl: z.string().default(DEFAULT_MINIMAX_BASE_URL),
       model: z.string().default(DEFAULT_MINIMAX_MODEL),
       voiceId: z.string().default(DEFAULT_MINIMAX_VOICE),
-      player: z.string().default(DEFAULT_MINIMAX_PLAYER),
       chunkChars: z.number().min(MIN_MINIMAX_BATCH_CHARS).max(MAX_MINIMAX_BATCH_CHARS).default(DEFAULT_MINIMAX_BATCH_CHARS),
       requestTimeoutMs: z.number().min(MIN_MINIMAX_REQUEST_TIMEOUT_MS).max(MAX_MINIMAX_REQUEST_TIMEOUT_MS).default(DEFAULT_MINIMAX_REQUEST_TIMEOUT_MS),
-    }),
-    mlx: z.object({
-      command: z.string().default(DEFAULT_MLX_COMMAND),
-      script: z.string(),
-      model: z.string().default(DEFAULT_MLX_MODEL),
-      refAudio: z.string(),
-    }),
-    export: z.object({
-      enabled: z.boolean().default(false),
-      dir: z.string().default(''),
     }),
   }),
   announce: z.object({
@@ -235,12 +159,6 @@ export const Config: z<Config> = z.object({
   maxSpeakChars: z.number().min(1).max(MAX_SPEAK_CHARS).default(DEFAULT_MAX_SPEAK_CHARS),
 })
 
-const TTS_ENGINES = ['minimax', 'mlx'] as const
-
-function isTtsEngine(value: unknown): value is TtsEngine {
-  return typeof value === 'string' && (TTS_ENGINES as readonly string[]).includes(value)
-}
-
 function stringOf(value: unknown, fallback: string, field: string): string {
   if (value === undefined || value === null) return fallback
   if (typeof value !== 'string') throw new Error(`dsh-talk: config.${field} must be a string`)
@@ -251,13 +169,6 @@ function nonEmptyStringOf(value: unknown, fallback: string, field: string): stri
   const text = stringOf(value, fallback, field)
   if (text.trim().length === 0) throw new Error(`dsh-talk: config.${field} must not be empty`)
   return text
-}
-
-function nullableNonEmptyStringOf(value: unknown, field: string): string | null {
-  if (value === undefined || value === null || value === '') return null
-  if (typeof value !== 'string') throw new Error(`dsh-talk: config.${field} must be a string`)
-  const trimmed = value.trim()
-  return trimmed === '' ? null : trimmed
 }
 
 function booleanOf(value: unknown, fallback: boolean, field: string): boolean {
@@ -278,25 +189,16 @@ function numberOf(value: unknown, fallback: number, min: number, max: number, fi
 }
 
 /**
- * Resolve one loader config into the runtime policy: every default is re-judged,
- * every bound re-checked, and engine-specific requirements fail loud.
+ * Resolve one loader config into the runtime policy: every default is re-judged
+ * and every bound re-checked.
  *
  * @param config - raw loader config.
  * @returns the frozen resolved policy.
  */
 export function resolveConfig(config?: Config): ResolvedConfig {
-  const tts = config?.tts ?? {}
-  const minimax = tts.minimax ?? {}
-  const mlx = tts.mlx ?? {}
+  const minimax = config?.tts?.minimax ?? {}
   const announce = config?.announce ?? {}
   const autoReply = config?.autoReply ?? {}
-
-  const engineRaw = tts.engine ?? 'minimax'
-  if (!isTtsEngine(engineRaw)) {
-    throw new Error(`dsh-talk: config.tts.engine must be "minimax" or "mlx", got ${JSON.stringify(engineRaw)}`)
-  }
-  const ttsEngine = engineRaw
-  const ttsFallback = booleanOf(tts.fallback, true, 'tts.fallback')
 
   const minimaxApiKeyEnv = nonEmptyStringOf(minimax.apiKeyEnv, DEFAULT_MINIMAX_API_KEY_ENV, 'tts.minimax.apiKeyEnv')
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(minimaxApiKeyEnv)) {
@@ -314,7 +216,6 @@ export function resolveConfig(config?: Config): ResolvedConfig {
   }
   const minimaxModel = nonEmptyStringOf(minimax.model, DEFAULT_MINIMAX_MODEL, 'tts.minimax.model')
   const minimaxVoiceId = nonEmptyStringOf(minimax.voiceId, DEFAULT_MINIMAX_VOICE, 'tts.minimax.voiceId')
-  const minimaxPlayer = nonEmptyStringOf(minimax.player, DEFAULT_MINIMAX_PLAYER, 'tts.minimax.player')
   const minimaxChunkChars = numberOf(
     minimax.chunkChars,
     DEFAULT_MINIMAX_BATCH_CHARS,
@@ -330,16 +231,6 @@ export function resolveConfig(config?: Config): ResolvedConfig {
     'tts.minimax.requestTimeoutMs',
   )
 
-  const mlxCommand = nonEmptyStringOf(mlx.command, DEFAULT_MLX_COMMAND, 'tts.mlx.command')
-  const mlxScript = nullableNonEmptyStringOf(mlx.script, 'tts.mlx.script')
-  const mlxModel = nonEmptyStringOf(mlx.model, DEFAULT_MLX_MODEL, 'tts.mlx.model')
-  const mlxRefAudio = nullableNonEmptyStringOf(mlx.refAudio, 'tts.mlx.refAudio')
-  if (ttsEngine === 'mlx' && mlxRefAudio === null) {
-    throw new Error('dsh-talk: config.tts.mlx.refAudio is required when tts.engine = "mlx"')
-  }
-
-  const ttsExportEnabled = booleanOf(tts.export?.enabled, false, 'tts.export.enabled')
-  const ttsExportDir = resolveExportDir(tts.export?.dir)
   const announceEnabled = booleanOf(announce.enabled, true, 'announce.enabled')
   const autoReplyEnabled = booleanOf(autoReply.enabled, true, 'autoReply.enabled')
   const autoReplyMaxChars = numberOf(
@@ -352,22 +243,13 @@ export function resolveConfig(config?: Config): ResolvedConfig {
   const maxSpeakChars = numberOf(config?.maxSpeakChars, DEFAULT_MAX_SPEAK_CHARS, 1, MAX_SPEAK_CHARS, 'maxSpeakChars')
 
   return Object.freeze({
-    ttsEngine,
-    ttsFallback,
     minimaxApiKeyEnv,
     minimaxCredentialsFile,
     minimaxBaseUrl,
     minimaxModel,
     minimaxVoiceId,
-    minimaxPlayer,
     minimaxChunkChars,
     minimaxRequestTimeoutMs,
-    mlxCommand,
-    mlxScript,
-    mlxModel,
-    mlxRefAudio,
-    ttsExportEnabled,
-    ttsExportDir,
     announceEnabled,
     autoReplyEnabled,
     autoReplyMaxChars,

@@ -1,13 +1,13 @@
 <div align="center">
 
-# 🎙️ dsh-talk
+# 🎙️ dsh-talk (android)
 
-**DeepSeek Harness के लिए होस्ट पर टेक्स्ट-टू-स्पीच: एजेंट के उत्तर बोलकर सुनाए
-जाते हैं, और कंपोज़र के पास के दो बटन ऑटो/मैनुअल मोड बदलते हैं तथा नवीनतम उत्तर
-पढ़ते या रोकते हैं।**
+**DeepSeek Harness के Android संस्करण के लिए MiniMax क्लाउड टेक्स्ट-टू-स्पीच:
+एजेंट के उत्तर बोलकर सुनाए जाते हैं, Web UI ऑडियो चलाता है, और कंपोज़र के पास
+के दो बटन ऑटो/मैनुअल मोड बदलते हैं तथा नवीनतम उत्तर पढ़ते या रोकते हैं।**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/dsh-talk)](https://www.npmjs.com/package/dsh-talk)
+[![DSH plugin](https://img.shields.io/badge/dsh--plugin-✅-green)](https://github.com/topics/dsh-plugin)
 
 [English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
 
@@ -20,8 +20,13 @@ dsh plugin --profile <name> add dsh-talk
 ## इंस्टॉल
 
 ```sh
-dsh plugin --profile web add github:jamesylj/dsh-talk
+# git चैनल, android ब्रांच (यह README इसी की है)
+dsh plugin --profile web add github:jamesylj/dsh-talk#android
+
+# npm चैनल (प्रकाशित संस्करण)
 dsh plugin --profile web add dsh-talk
+
+# tarball चैनल (पहले इस ब्रांच को बिल्ड करें)
 pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz
 ```
 
@@ -29,58 +34,61 @@ pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz
 
 ## यह क्या करता है
 
-- **`speak` टूल**: एजेंट होस्ट मशीन पर बोलता है।
+- **`speak` टूल**: एजेंट MiniMax `speech-2.8-turbo` से बोलता है।
 - **ऑटो-रीड**: टर्न खत्म होने पर सहायक का अंतिम उत्तर बोलकर सुनाया जाता है
   (कोड ब्लॉक हटाकर, `autoReply.maxChars` तक सीमित)।
 - **प्ले बटन**: क्लिक पर वर्तमान सत्र का नवीनतम उत्तर पढ़ा जाता है; बोलते समय
   दोबारा क्लिक करने पर रुक जाता है।
 - **मोड बटन**: **auto** (हर उत्तर अपने-आप पढ़ा जाए) और **manual** (जब तक ▶ न
-  दबाएँ, होस्ट चुप रहे) के बीच बदलता है। यह रनटाइम स्थिति है: कोई कॉन्फ़िग
+  दबाएँ, प्लगइन चुप रहे) के बीच बदलता है। यह रनटाइम स्थिति है: कोई कॉन्फ़िग
   नहीं लिखा जाता और रीलोड की ज़रूरत नहीं।
-- **टर्न-एंड घोषणा**: जब उत्तर नहीं पढ़ा गया और कोई ऑडियो नहीं चल रहा हो।
-- **वैकल्पिक ऑडियो एक्सपोर्ट** (डिफ़ॉल्ट रूप से बंद)।
+- **टर्न-एंड घोषणा**: जब उत्तर नहीं पढ़ा गया और कोई ऑडियो नहीं चल रहा हो, छोटी
+  पंक्ति "Turn complete."।
 
-0.5 में वॉइस इनपुट, ब्राउज़र `<audio>` प्लेबैक, edge-tts, piper, macOS `say`
-और सेटिंग्स राइट-बैक हटा दिए गए हैं।
+यह ब्रांच केवल Android के लिए है: `main` लाइन का स्थानीय MLX Qwen3-TTS इंजन और
+होस्ट का `ffplay` प्लेयर हटा दिए गए हैं। Android में Apple का MLX और स्थानीय
+ऑडियो प्लेयर नहीं है, इसलिए होस्ट MP3 बनाता है और DeepSeek Harness का Web UI
+उसे WebView में चलाता है।
 
 ## त्वरित शुरुआत
 
-1. बंडल इंस्टॉल करें और प्रोफ़ाइल रीस्टार्ट करें।
-2. इंजन कॉन्फ़िगर करें: डिफ़ॉल्ट MiniMax (API key चाहिए), MLX स्थानीय
-   फ़ॉलबैक।
+1. प्लगइन को DeepSeek Harness Android ऐप में इंस्टॉल करें (नीचे Android सेटअप)।
+2. MiniMax API key सेट करें (`MINIMAX_CN_API_KEY` या harness credential store)।
 3. एजेंट से `speak` कहलवाएँ या सामान्य संदेश भेजें — टर्न खत्म होने पर उत्तर
-   पढ़ा जाएगा।
-4. मोड बदलने के लिए मोड बटन और अंतिम उत्तर दोबारा सुनने/रोकने के लिए ▶ / ⏹
-   बटन।
-
-MiniMax के लिए होस्ट पर `ffplay` (Homebrew `ffmpeg`) ज़रूरी है:
-`brew install ffmpeg`.
+   पढ़ा जाता है और इंटरफ़ेस उसे चलाता है।
+4. मोड बदलने के लिए ऑटो/मैनुअल बटन और दोबारा सुनने/रोकने के लिए ▶ / ⏹ बटन।
 
 ## कॉन्फ़िगरेशन
 
+सभी कुंजियाँ प्रोफ़ाइल patch परत की `talk` पंक्ति के `config` में हैं। रिपॉज़िटरी
+का `cordis.patch.yml` हर कुंजी की व्याख्या करता है।
+
 | कुंजी | डिफ़ॉल्ट | अर्थ |
 |---|---|---|
-| `tts.engine` / `tts.fallback` | `minimax` / `true` | इंजन (`minimax` या `mlx`); MiniMax विफल होने पर संदर्भ WAV हो तो MLX |
 | `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | API key का स्रोत: पहले environment, फिर harness credential store (`refs:`); key कभी लॉग नहीं होती |
 | `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | endpoint, मॉडल और सिस्टम वॉइस |
-| `tts.minimax.player` / `tts.minimax.chunkChars` / `tts.minimax.requestTimeoutMs` | `ffplay` / `2000` / `120000` | प्लेयर, प्रति अनुरोध वर्ण और idle timeout (ms) |
-| `tts.mlx.command` / `tts.mlx.script` / `tts.mlx.model` / `tts.mlx.refAudio` | venv python / bundled worker / Base 4-bit मॉडल / *(कोई नहीं)* | स्थानीय Qwen3-TTS Base x-vector क्लोन इंजन |
-| `tts.export.enabled` / `tts.export.dir` | `false` / `<home>/.dsh-talk/audio` | ऑडियो फ़ाइल में लिखकर `audioPath` लौटाता है |
+| `tts.minimax.chunkChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | प्रति अनुरोध वर्ण (लंबा टेक्स्ट वाक्यों पर काटकर जोड़ा जाता है) और idle timeout (ms) |
 | `announce.enabled` | `true` | ऑटो-रीड न होने पर टर्न-एंड घोषणा |
 | `autoReply.enabled` / `autoReply.maxChars` | `true` / `600` | ऑटो-रीड और उसकी वर्ण सीमा |
 | `maxSpeakChars` | `20000` | एक `speak` कॉल की सीमा |
 
-## होस्ट प्लेबैक इंजन
+## ऑडियो कैसे चलता है
 
-- **MiniMax**: सिंक्रोनस T2A को `stream: true` से कॉल करता है; SSE के MP3
-  खंड सीधे एक `ffplay` के stdin में जाते हैं।
-- **MLX**: resident worker क्वांटाइज़्ड Qwen3-TTS **Base** मॉडल गर्म रखता है
-  और `tts.mlx.refAudio` को केवल x-vector से क्लोन करता है (preset voice या ICL
-  नहीं)। खंड एक ही `sounddevice` स्ट्रीम में जाते हैं।
-- नई आवाज़ केवल **उसी सत्र** की चल रही आवाज़ रोकती है; auto-read और घोषणाएँ
-  `interrupt: false` भेजती हैं।
-- ▶ बटन `talk/playLatest` और `talk/stop` उपयोग करता है; मोड बटन केवल मोड बदलता
-  है, इसलिए manual मोड में भी ▶ काम करता है।
+इस ब्रांच में होस्ट पर कोई प्लेयर नहीं है:
+
+1. होस्ट MiniMax के सिंक्रोनस T2A को `stream: true` से कॉल करता है, SSE के
+   हेक्स MP3 खंड डिकोड करता है, एक उच्चारण के बैच जोड़ता है और MP3 को कतार में
+   रखता है (सीमा: 6 उच्चारण / 24 MiB)।
+2. इंटरफ़ेस कर्सर के साथ `talk/pending` पूछता है, हर base64 MP3 को Blob बनाकर
+   एक साझा `<audio>` एलिमेंट से एक-एक करके चलाता है। ऑटो-रीड का ऑडियो भी इसी
+   तरह WebView में पहुँचता है।
+3. ▶ वर्तमान सत्र के साथ `talk/playLatest` कहता है; ⏹ स्थानीय एलिमेंट रोककर
+   `talk/stop` कहता है, जो सिंथेसिस रोकता है और कतार खाली करता है। नया उच्चारण
+   केवल **उसी सत्र** को रोकता है; ऑटो-रीड और घोषणाएँ `interrupt: false` भेजती हैं।
+
+Android WebView प्लेबैक से पहले उपयोगकर्ता के जेस्चर की मांग कर सकता है: पेज पर
+पहला टैप प्लेयर अनलॉक करता है; फिर भी रुके तो बटन का tooltip बताता है और अगला
+जेस्चर दोबारा कोशिश करता है।
 
 ## MiniMax सेटअप
 
@@ -88,47 +96,64 @@ MiniMax के लिए होस्ट पर `ffplay` (Homebrew `ffmpeg`) ज
 export MINIMAX_CN_API_KEY=...
 ```
 
-सामान्य वॉइस: `Chinese (Mandarin)_Warm_Girl`, `female-yujie`,
-`Chinese (Mandarin)_Gentleman`. कीमत लगभग ¥2 प्रति 10,000 अक्षर (एक चीनी अक्षर
-दो गिना जाता है); पढ़ा जाने वाला टेक्स्ट मशीन से बाहर जाता है।
+वॉइस: `Chinese (Mandarin)_Warm_Girl`, `female-yujie`,
+`Chinese (Mandarin)_Gentleman`, `Chinese (Mandarin)_News_Anchor`. कीमत लगभग ¥2
+प्रति 10,000 अक्षर (एक चीनी अक्षर दो गिना जाता है); पढ़ा जाने वाला टेक्स्ट डिवाइस
+से बाहर जाता है।
 
-## MLX सेटअप
+## Android सेटअप
 
-1. `~/.dsh-talk/mlx-tts-venv` में `mlx-audio` वाला venv बनाएँ।
-2. Qwen3-TTS **Base** 4-bit चेकपॉइंट
-   `~/.dsh-talk/models/qwen3-tts-0.6b-base-4bit` में डाउनलोड करें।
-3. एक संदर्भ WAV बनाएँ और `tts.mlx.refAudio` उस पर सेट करें।
+1. [DeepSeek Harness for Android](https://github.com/woaiys3/deepseek-harness-android-app)
+   इंस्टॉल करें (kernel `0.2.1-rc.2`, इस ब्रांच की peer लाइन)।
+2. ऐप में: कंसोल →「Plugins」, GitHub पते `github:jamesylj/dsh-talk#android` से
+   इंस्टॉल करें (ऐप में pnpm और git हैं), या बिल्ड किया tarball डिवाइस पर कॉपी
+   करके स्थानीय डायरेक्टरी से इंस्टॉल करें।
+3. अगर bundle `talk` पंक्ति न जोड़े, तो प्रोफ़ाइल patch परत में जोड़ें, इंजन
+   शुरू करें और API key भरें।
+4. बातचीत खोलें: कंपोज़र के बाईं ओर दो बटन दिखेंगे।
 
-## बटन और सेटिंग्स
+प्लगइन को केवल outbound नेटवर्क चाहिए; कोई स्थानीय प्रोसेस नहीं चलाता।
+
+## बटन, मोड और सेटिंग्स
 
 मोड बटन «Auto» या «Manual» दिखाता है:
 
-- **Auto** — हर पूरा हुआ उत्तर बोलकर सुनाया जाता है (`autoReply.enabled`,
-  टर्न-एंड कारण और `announce.enabled` के अधीन)।
-- **Manual** — टर्न के बाद होस्ट बिलकुल चुप रहता है; केवल ▶ बटन पढ़ता है। एक
-  क्लिक `talk/applyMode` से तुरंत मोड बदल देता है।
+- **Auto** — हर पूरा उत्तर पढ़ा जाता है (`autoReply.enabled`, टर्न-एंड कारण और
+  `announce.enabled` के अधीन)।
+- **Manual** — टर्न के बाद होस्ट चुप रहता है; केवल ▶ पढ़ता है। एक क्लिक
+  `talk/applyMode` से तुरंत मोड बदल देता है।
 
-▶ / ⏹ बटन खाली होने पर ▶ और बोलते समय ⏹ दिखाता है। मोड रनटाइम स्थिति है:
+▶ / ⏹ बटन खाली होने पर ▶ और चलते/बनते समय ⏹ दिखाता है। मोड रनटाइम स्थिति है:
 रीस्टार्ट पर कॉन्फ़िगर किया गया `autoReply.enabled` डिफ़ॉल्ट लौट आता है, और
-सेटिंग्स टैब का auto-reply स्विच वर्तमान मोड दिखाकर सेव करता है। सेव करने पर
-प्रोफ़ाइल patch में एक ऑपरेशन जुड़ता है (लागू करने के लिए रीलोड करें)।
+सेटिंग्स टैब का auto-reply स्विच वर्तमान मोड दिखाकर सेव करता है। टैब MiniMax
+वॉइस भी दिखाता है; सेव करने पर प्रोफ़ाइल patch में एक ऑपरेशन जुड़ता है (लागू
+करने के लिए रीलोड)।
 
 ## समस्या निवारण
 
-- आवाज़ नहीं: `ffplay` नहीं है ( `brew install ffmpeg` ) या API key नहीं; 
-  `plugin:dsh-talk/speech` इवेंट में `error` दर्ज होता है।
-- `minimax: 1004: invalid api key`: key environment या credential store में नहीं
-  मिली।
-- MLX पहली बार धीमा: मॉडल लोड होता है; बाद में worker दोबारा उपयोग होता है।
-- कंपोज़र बटन कुछ न करे: सीमित डायग्नोस्टिक्स लॉग
+- **आवाज़ नहीं**: MiniMax API key नहीं (`minimax: no API key`), नेटवर्क नहीं, या
+  WebView जेस्चर का इंतज़ार कर रहा है — पेज पर एक बार टैप करें, फिर ▶ दबाएँ।
+- **प्रमाणीकरण त्रुटि**: `minimax: 1004: invalid api key` का अर्थ key environment
+  या store में नहीं मिली।
+- **बटन कुछ न करे**: सीमित डायग्नोस्टिक्स लॉग
   `~/.dsh-talk/logs/diagnostics.log` देखें (क्रेडेंशियल छिपे रहते हैं)।
+- **लंबी रीडिंग कटे**: सत्र लॉग में `interrupted` देखें; कतार में अधिकतम 6
+  उच्चारण / 24 MiB रहते हैं और 16 MiB से बड़ा MP3 स्पष्ट इंजन त्रुटि देता है।
 
 ## सुरक्षा और विकास
 
-- API key हर utterance पर हल होती है और कभी लॉग नहीं होती।
-- हर utterance `plugin:dsh-talk/speech` इवेंट के रूप में दर्ज होता है, ऑडियो
-  बाइट्स नहीं।
-- जाँच: `pnpm test`, `pnpm run build`, `pnpm run check:readmes`.
+- API key हर utterance पर हल होती है और कभी लॉग नहीं होती; त्रुटियाँ सत्र लॉग या
+  टूल परिणाम तक पहुँचने से पहले sanitize होती हैं।
+- हर utterance `plugin:dsh-talk/speech` इवेंट के रूप में दर्ज होता है (टेक्स्ट,
+  इंजन, कारण, बाइट्स, त्रुटि), ऑडियो बाइट्स नहीं।
+- सिंथेसाइज़्ड ऑडियो केवल स्थानीय Remote चैनल से जाता है, कभी डिस्क पर नहीं
+  लिखा जाता, और चलने के बाद या ⏹ पर कतार से हट जाता है।
+- इंटरैक्टिव विफलताएँ `~/.dsh-talk/logs/diagnostics.log` में सीमित, redacted
+  पंक्ति जोड़ती हैं।
+- जाँच: `pnpm run typecheck`, `pnpm run typecheck:ci`, `pnpm test`,
+  `pnpm run build`, `pnpm run verify:self-contained`,
+  `pnpm run verify:artifacts`, `pnpm run check:readmes`,
+  `pnpm run check:lockfile`.
 
 ## लाइसेंस
 

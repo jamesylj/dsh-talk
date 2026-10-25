@@ -138,7 +138,6 @@ export interface Harness {
   /** The mounted talk service (for assertions about the speech-log outcome table). */
   readonly service: TalkService
   /** The audio-export directory this mount writes into (a per-mount temp dir unless the test set one). */
-  readonly exportDir: string
 }
 
 /**
@@ -151,16 +150,6 @@ export interface Harness {
  * @param config - the raw plugin config the test passed.
  * @returns the config with `tts.export.dir` filled, plus the directory used.
  */
-function withTemporaryExportDir(config: Record<string, unknown>): { config: Record<string, unknown>; exportDir: string } {
-  const tts = (config['tts'] ?? {}) as Record<string, unknown>
-  const exportConfig = (tts['export'] ?? {}) as Record<string, unknown>
-  const configured = exportConfig['dir']
-  const exportDir = typeof configured === 'string' && configured !== '' ? configured : mkdtempSync(join(tmpdir(), 'dsh-talk-export-'))
-  return {
-    config: { ...config, tts: { ...tts, export: { ...exportConfig, dir: exportDir } } },
-    exportDir,
-  }
-}
 
 /**
  * Run `body` with `dsh-talk/speech` deliberately marked as a known host
@@ -270,13 +259,12 @@ export async function mountHarness(config: Record<string, unknown> = {}): Promis
   new FakeSubprocessRuntime(ctx)
 
   const plugin = await import('../src/index.ts')
-  const scoped = withTemporaryExportDir(config)
-  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, scoped.config)
+  await ctx.plugin(plugin as unknown as import('@deepseek-ai/cordis').Plugin, config)
 
   const subprocess = ctx.get('subprocess') as unknown as FakeSubprocessRuntime
   const agent = makeAgent(session)
   const service = ctx.get('talk') as unknown as TalkService
-  return { ctx, session, agent, subprocess, service, exportDir: scoped.exportDir }
+  return { ctx, session, agent, subprocess, service }
 }
 
 /** Re-exported for specs that script subprocess outcomes directly. */

@@ -1,22 +1,15 @@
-# dsh-talk bundle patch: mount host-played text-to-speech.
+# dsh-talk (android) bundle patch: MiniMax cloud TTS, played by the Web UI.
 #
-# The composer shows two controls: an auto/manual mode button (runtime state,
-# not config — see talk/applyMode) and the play/stop button for the latest
-# reply.
-#
-# Every key below is a Config field (Schemastery schema); invalid values fail
-# the profile load loudly. See README.md "Configuration" for the full table.
+# The Android runtime has no local TTS engine and no host audio player, so this
+# branch keeps exactly one engine: MiniMax speech-2.8-turbo. The host synthesizes
+# the MP3 and queues it; the DeepSeek Harness Web UI drains the queue and plays
+# it in the WebView. The composer shows an auto/manual mode button and a
+# play/stop button.
 - insert:
     - id: talk
       name: dsh-talk
       config:
         tts:
-          # minimax | mlx. MiniMax is the cloud engine (speech-2.8-turbo);
-          # MLX is the offline Qwen3-TTS Base clone engine.
-          engine: minimax
-          # When MiniMax fails for a non-abort reason, retry with MLX if a
-          # reference WAV is configured below.
-          fallback: true
           minimax:
             # API key resolution: this environment variable first, then the
             # harness credential store's refs section. Never logged.
@@ -31,31 +24,12 @@
             # System voice id, e.g. "Chinese (Mandarin)_Warm_Girl",
             # "female-yujie", "Chinese (Mandarin)_Gentleman".
             voiceId: Chinese (Mandarin)_Warm_Girl
-            # Streaming player that reads the SSE MP3 from stdin (ffmpeg's ffplay).
-            player: ffplay
-            # Characters per API request; longer text splits at sentence boundaries.
+            # Characters per API request; longer text splits at sentence
+            # boundaries and the pieces are concatenated into one utterance.
             chunkChars: 2000
-            # Idle timeout: no network read or player write for this long fails
-            # the utterance (5000..600000).
+            # Idle timeout: no network progress for this long fails the utterance
+            # (5000..600000).
             requestTimeoutMs: 120000
-          mlx:
-            # Local Qwen3-TTS Base engine with x-vector clone only. Defaults when
-            # empty: ~/.dsh-talk/mlx-tts-venv/bin/python,
-            # ~/.dsh-talk/models/qwen3-tts-0.6b-base-4bit.
-            command: ''
-            # Worker script; empty = the bundled worker/mlx_tts.py.
-            script: ''
-            model: ''
-            # x-vector reference WAV (required for the mlx engine and for the
-            # MiniMax → MLX fallback).
-            refAudio: ''
-          export:
-            # Write host-synthesized audio to a file and return its path as
-            # audioPath (off by default).
-            enabled: false
-            # Empty = "<home>/.dsh-talk/audio"; "~" expands to home; a relative
-            # path resolves under home, never the workspace.
-            dir: ''
         # Speak "Turn complete." when a turn was not auto-read and nothing plays.
         announce:
           enabled: true

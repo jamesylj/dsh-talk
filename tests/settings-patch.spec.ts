@@ -1,6 +1,6 @@
 /**
  * Settings write-back: validation, merge, YAML rendering and the append with a
- * timestamped backup.
+ * timestamped backup (android branch: voice + auto-reply only).
  *
  * @module dsh-talk/test/settings-patch.spec
  */
@@ -18,15 +18,14 @@ import {
 } from '../src/settings-patch.ts'
 
 describe('validateSettingsInput', () => {
-  it('accepts the three editable fields', () => {
-    expect(validateSettingsInput({ engine: 'mlx', voiceId: 'Chinese (Mandarin)_Gentleman', autoReplyEnabled: false })).toEqual({
+  it('accepts the editable fields', () => {
+    expect(validateSettingsInput({ voiceId: 'Chinese (Mandarin)_Gentleman', autoReplyEnabled: false })).toEqual({
       ok: true,
-      settings: { engine: 'mlx', voiceId: 'Chinese (Mandarin)_Gentleman', autoReplyEnabled: false },
+      settings: { voiceId: 'Chinese (Mandarin)_Gentleman', autoReplyEnabled: false },
     })
   })
 
-  it('rejects an unknown engine, a blank voice and a non-boolean switch', () => {
-    expect(validateSettingsInput({ engine: 'piper' }).ok).toBe(false)
+  it('rejects a blank voice, a non-boolean switch and a non-object', () => {
     expect(validateSettingsInput({ voiceId: '  ' }).ok).toBe(false)
     expect(validateSettingsInput({ autoReplyEnabled: 'yes' }).ok).toBe(false)
     expect(validateSettingsInput('nope').ok).toBe(false)
@@ -36,21 +35,20 @@ describe('validateSettingsInput', () => {
 describe('mergeTalkRowConfig', () => {
   it('merges over the raw row without dropping hand-authored keys', () => {
     const merged = mergeTalkRowConfig(
-      { tts: { minimax: { apiKeyEnv: 'MINIMAX_CN_API_KEY' }, mlx: { refAudio: '/tmp/ref.wav' } }, autoReply: { maxChars: 5000 } },
-      { engine: 'mlx', voiceId: 'voice-x', autoReplyEnabled: false },
+      { tts: { minimax: { apiKeyEnv: 'MINIMAX_CN_API_KEY' } }, autoReply: { maxChars: 5000 } },
+      { voiceId: 'voice-x', autoReplyEnabled: false },
     )
-    expect(merged['tts']).toMatchObject({ engine: 'mlx', minimax: { voiceId: 'voice-x', apiKeyEnv: 'MINIMAX_CN_API_KEY' }, mlx: { refAudio: '/tmp/ref.wav' } })
+    expect(merged['tts']).toMatchObject({ minimax: { voiceId: 'voice-x', apiKeyEnv: 'MINIMAX_CN_API_KEY' } })
     expect(merged['autoReply']).toEqual({ maxChars: 5000, enabled: false })
   })
 })
 
 describe('renderSettingsFragment + appendSettingsFragment', () => {
   it('renders one append-only row operation with the merged config', () => {
-    const fragment = renderSettingsFragment(mergeTalkRowConfig(undefined, { engine: 'mlx', autoReplyEnabled: true }))
+    const fragment = renderSettingsFragment(mergeTalkRowConfig(undefined, { autoReplyEnabled: true }))
     expect(fragment).toContain('dsh-talk: settings applied by the panel')
     expect(fragment).toContain('- id: talk')
     expect(fragment).toContain('name: dsh-talk')
-    expect(fragment).toContain('engine: mlx')
     expect(fragment).toContain('enabled: true')
   })
 

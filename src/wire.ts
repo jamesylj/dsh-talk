@@ -1,17 +1,17 @@
 /**
- * The `talk` Remote wire vocabulary for the v0.5 surface: status, manual
- * play-latest, stop, the auto/manual mode switch, and the three-field settings
- * save. The descriptor list is shared verbatim by the host `./typert` manifest
- * and the client Remote contribution, so the two faces cannot drift.
+ * The `talk` Remote wire vocabulary for the `android` branch: status, manual
+ * play-latest, stop, the auto/manual mode switch, the two-field settings save,
+ * and the utterance queue the Web UI drains to play audio.
+ *
+ * The engine is fixed (MiniMax); audio is synthesized on the host and handed to
+ * the client in {@link TalkPendingResult} items as base64 MP3, because the
+ * Android runtime has no local audio player for the host to drive.
  *
  * @module dsh-talk/wire
  */
 
 import { z } from 'zod'
 import type { InvocationDescriptor } from '@deepseek-ai/dsh-typert-protocol'
-
-/** The engines the settings panel may select. */
-export const TTS_ENGINES = ['minimax', 'mlx'] as const
 
 /** The two interaction modes the composer mode button switches between. */
 export const TALK_MODES = ['auto', 'manual'] as const
@@ -26,9 +26,7 @@ function strictWire<T>(typeSymbol: string, schema: T) {
 
 /** Read-only state served by `talk/status`. */
 export interface TalkStatus {
-  /** Configured engine. */
-  engine: (typeof TTS_ENGINES)[number]
-  /** Whether a host synthesis/playback is in flight right now. */
+  /** Whether a host synthesis is in flight right now (playback happens client-side). */
   speaking: boolean
   /** MiniMax system voice id currently configured. */
   voiceId: string
@@ -38,7 +36,6 @@ export interface TalkStatus {
 
 /** Strict wire schema for {@link TalkStatus}. */
 export const TALK_STATUS_SCHEMA = z.object({
-  engine: z.union([z.literal('minimax'), z.literal('mlx')]),
   speaking: z.boolean(),
   voiceId: z.string(),
   mode: z.enum(['auto', 'manual']),
@@ -46,12 +43,14 @@ export const TALK_STATUS_SCHEMA = z.object({
 
 /** Result of `talk/playLatest`: the manual read of the newest assistant reply. */
 export interface TalkPlayResult {
-  /** Whether something was spoken. */
+  /** Whether the utterance was synthesized and queued for playback. */
   spoken: boolean
   /** Engine that spoke (or would have); null when nothing was found. */
-  engine: (typeof TTS_ENGINES)[number] | null
+  engine: 'minimax' | null
   /** The text handed to the engine (sanitized); absent when nothing was found. */
   text?: string
+  /** Utterance id the client will receive through `talk/pending`. */
+  utteranceId?: string
   /** Sanitized failure note; absent on success. */
   error?: string
 }
@@ -59,14 +58,15 @@ export interface TalkPlayResult {
 /** Strict wire schema for {@link TalkPlayResult}. */
 export const TALK_PLAY_RESULT_SCHEMA = z.object({
   spoken: z.boolean(),
-  engine: z.union([z.literal('minimax'), z.literal('mlx'), z.null()]),
+  engine: z.union([z.literal('minimax'), z.null()]),
   text: z.string().optional(),
+  utteranceId: z.string().optional(),
   error: z.string().optional(),
 })
 
 /** Result of `talk/stop`. */
 export interface TalkStopResult {
-  /** Whether any in-flight synthesis/playback existed to stop. */
+  /** Whether any in-flight synthesis or queued utterance existed to drop. */
   stopped: boolean
 }
 
@@ -75,12 +75,14 @@ export const TALK_STOP_RESULT_SCHEMA = z.object({
   stopped: z.boolean(),
 })
 
-/**
- * Wire codec for one {@link TalkMode} value. The invocation parameter is the
- * scalar mode itself (not an object): the host calls `applyMode(mode)` with the
- * decoded value, matching every other single-argument `talk` method.
- */
-export const TALK_MODE_SCHEMA = z.enum(['auto', 'manual'])
+/** The composer mode button's submission. */
+export interface TalkModeInput {
+  /** The mode to switch to. */
+  mode: TalkMode
+}
+
+/** Strict wire schema for {@link TalkModeInput}. */
+export const TALK_MODE_INPUT_SCHEMA = z.enum(['auto', 'manual'])
 
 /** Result of `talk/applyMode`: the effective mode after the switch. */
 export interface TalkModeResult {
@@ -95,8 +97,6 @@ export const TALK_MODE_RESULT_SCHEMA = z.object({
 
 /** Settings the panel may change. */
 export interface TalkSettingsInput {
-  /** Engine selection. */
-  engine?: (typeof TTS_ENGINES)[number] | undefined
   /** MiniMax system voice id. */
   voiceId?: string | undefined
   /** Auto-reply read-aloud switch. */
@@ -105,7 +105,6 @@ export interface TalkSettingsInput {
 
 /** Strict wire schema for {@link TalkSettingsInput}. */
 export const TALK_SETTINGS_INPUT_SCHEMA = z.object({
-  engine: z.union([z.literal('minimax'), z.literal('mlx')]).optional(),
   voiceId: z.string().optional(),
   autoReplyEnabled: z.boolean().optional(),
 })
@@ -125,6 +124,49 @@ export const TALK_SETTINGS_RESULT_SCHEMA = z.object({
   file: z.string(),
   bytes: z.number().int(),
   note: z.string(),
+})
+
+/** One synthesized utterance waiting for the Web UI to play. */
+export interface TalkUtterance {
+  /** Stable utterance id. */
+  id: string
+  /** Monotonic queue position (`talk/pending` cursor). */
+  seq: number
+  /** Session the utterance belongs to. */
+  sessionId: string
+  /** The spoken text (sanitized). */
+  text: string
+  /** Audio MIME type (`audio/mpeg`). */
+  mime: string
+  /** Base64-encoded MP3 bytes. */
+  audioBase64: string
+  /** Decoded audio size in bytes. */
+  bytes: number
+}
+
+/** Strict wire schema for {@link TalkUtterance}. */
+export const TALK_UTTERANCE_SCHEMA = z.object({
+  id: z.string(),
+  seq: z.number().int(),
+  sessionId: z.string(),
+  text: z.string(),
+  mime: z.string(),
+  audioBase64: z.string(),
+  bytes: z.number().int(),
+})
+
+/** Result of `talk/pending`: the queue tail the client has not played yet. */
+export interface TalkPendingResult {
+  /** Current queue cursor; echo it back on the next call. */
+  cursor: number
+  /** Utterances with `seq > since` (empty for the baseline call). */
+  items: readonly TalkUtterance[]
+}
+
+/** Strict wire schema for {@link TalkPendingResult}. */
+export const TALK_PENDING_RESULT_SCHEMA = z.object({
+  cursor: z.number().int(),
+  items: z.array(TALK_UTTERANCE_SCHEMA),
 })
 
 /** Frozen source position both faces carry (diagnostics only). */
@@ -182,7 +224,7 @@ export const TALK_APPLY_MODE_DESCRIPTOR = Object.freeze({
     name: 'mode',
     wire: 'mode',
     source: 'json',
-    codec: strictWire('dsh-talk/types#TalkMode', TALK_MODE_SCHEMA),
+    codec: strictWire('dsh-talk/types#TalkMode', TALK_MODE_INPUT_SCHEMA),
   } satisfies InvocationDescriptor['parameters'][number])]),
   result: strictWire('dsh-talk/types#TalkModeResult', TALK_MODE_RESULT_SCHEMA),
   sourceLocation: SOURCE,
@@ -205,6 +247,23 @@ export const TALK_APPLY_SETTINGS_DESCRIPTOR = Object.freeze({
   sourceLocation: SOURCE,
 } as const) satisfies InvocationDescriptor
 
+/** The `talk/pending` invocation descriptor. */
+export const TALK_PENDING_DESCRIPTOR = Object.freeze({
+  id: 'dsh-talk#talk/pending',
+  service: 'talk',
+  namespace: 'talk',
+  method: 'pending',
+  invocation: Object.freeze({ kind: 'direct' }),
+  parameters: Object.freeze([Object.freeze({
+    name: 'since',
+    wire: 'since',
+    source: 'json',
+    codec: strictWire('dsh-talk/types#TalkPendingSince', z.number().int()),
+  } satisfies InvocationDescriptor['parameters'][number])]),
+  result: strictWire('dsh-talk/types#TalkPendingResult', TALK_PENDING_RESULT_SCHEMA),
+  sourceLocation: SOURCE,
+} as const) satisfies InvocationDescriptor
+
 /** The canonical invocation list both Typert faces register. */
 export const TALK_INVOCATIONS = Object.freeze([
   TALK_STATUS_DESCRIPTOR,
@@ -212,4 +271,5 @@ export const TALK_INVOCATIONS = Object.freeze([
   TALK_STOP_DESCRIPTOR,
   TALK_APPLY_MODE_DESCRIPTOR,
   TALK_APPLY_SETTINGS_DESCRIPTOR,
+  TALK_PENDING_DESCRIPTOR,
 ])

@@ -1,12 +1,16 @@
 /**
- * `dsh-talk` — host-played text-to-speech for DeepSeek Harness.
+ * `dsh-talk` — MiniMax cloud text-to-speech for the Android build of DeepSeek
+ * Harness.
  *
- * v0.5 mounts the `talk` service (MiniMax + MLX clone playback, scoped
- * interruption, optional export, settings write-back, and the runtime
- * auto/manual mode the composer button switches), registers the `speak` tool
- * and the automatic reply read-aloud, and speaks one generic turn-end
- * announcement when a finished turn was not auto-read. Manual mode silences
- * both the auto-read and the announcement.
+ * The `android` branch mounts the `talk` service (MiniMax synthesis, an
+ * utterance queue the Web UI drains through `talk/pending`, settings write-back
+ * and the runtime auto/manual mode the composer button switches), registers the
+ * `speak` tool and the automatic reply read-aloud, and speaks one generic
+ * turn-end announcement when a finished turn was not auto-read. Manual mode
+ * silences both the auto-read and the announcement.
+ *
+ * There is no local engine and no host audio player: the Android runtime has
+ * neither Apple-silicon MLX nor ffplay, so the WebView plays the queued MP3.
  *
  * Function plugin — no default export (the Loader unwraps
  * `exports.default ?? exports`).
@@ -17,7 +21,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-session'
 import { AutoReplyController } from './auto-reply.ts'
 import { Config, resolveConfig } from './config.ts'
@@ -26,10 +29,10 @@ import { speakTool } from './tool.ts'
 
 export const name = 'talk'
 
-/** Hard services: the tool registry and the subprocess service. */
-export const inject = ['tools', 'subprocess']
+/** Hard services: the tool registry. */
+export const inject = ['tools']
 
-export { Config, resolveConfig, type AutoReplyConfig, type Config as TalkConfig, type ResolvedConfig, type TtsEngine } from './config.ts'
+export { Config, resolveConfig, type AutoReplyConfig, type Config as TalkConfig, type ResolvedConfig } from './config.ts'
 export { TalkService, type SpeakOptions, type SpeakOutcome } from './service.ts'
 export { speakTool, renderSpeak } from './tool.ts'
 export {
@@ -52,22 +55,26 @@ export {
 export { EngineFailure } from './engine.ts'
 export { sanitizeText, redactSecrets, displayPath } from './sanitize.ts'
 export {
-  DEFAULT_EXPORT_DIRECTORY,
-  EXPORT_FILE_PATTERN,
-  exportExtension,
-  exportFileName,
-  exportSynthesizedAudio,
-  pruneExports,
-  resolveExportDir,
-  selectPrunableExports,
-  type AudioExportState,
-  type ExportEntry,
-  type ExportOutcome,
-  type ExportPolicy,
-  type LocalTtsEngine,
-} from './audio-export.ts'
+  MINIMAX_MAX_AUDIO_BYTES,
+  MinimaxEngine,
+  minimaxRequestBody,
+  parseCredentialRefs,
+  parseMinimaxSseLine,
+  resolveMinimaxApiKey,
+  splitMinimaxText,
+} from './minimax.ts'
 export { appendSettingsFragment, mergeTalkRowConfig, renderSettingsFragment, validateSettingsInput, yamlScalar } from './settings-patch.ts'
-export type { TalkPlayResult, TalkSettingsInput, TalkSettingsResult, TalkStatus, TalkStopResult } from './wire.ts'
+export { appendDiagnostic, describeError, diagnosticsPath, readDiagnostics } from './diagnostics.ts'
+export type {
+  TalkMode,
+  TalkPendingResult,
+  TalkPlayResult,
+  TalkSettingsInput,
+  TalkSettingsResult,
+  TalkStatus,
+  TalkStopResult,
+  TalkUtterance,
+} from './wire.ts'
 export type { DshTalkSpeechEvent, SpeechReason, SpeechTtsEngine } from './speech.ts'
 
 /**
@@ -75,7 +82,7 @@ export type { DshTalkSpeechEvent, SpeechReason, SpeechTtsEngine } from './speech
  * controller and the turn-end announcement. Every registration is an effect on
  * this fiber, so unload/hot-reload removes them together.
  *
- * @param ctx - context carrying tools + subprocess.
+ * @param ctx - context carrying the tool registry.
  * @param config - raw loader config; defaults applied through {@link resolveConfig}.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {

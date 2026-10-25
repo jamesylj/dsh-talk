@@ -1,9 +1,10 @@
 /**
- * `dsh-talk`, browser half: mounts the `talk` Remote contribution, registers
- * the composer auto/manual mode button plus the play/stop voice button into
- * `conversation.input.left`, and the simplified settings tab
- * (`settings.plugins.tab`, id `talk`). All data arrives through the
- * `remote.talk` namespace.
+ * `dsh-talk`, browser half (Android build): mounts the `talk` Remote
+ * contribution, registers the composer auto/manual mode button and the
+ * play/stop (plus playback) voice button into `conversation.input.left`, and
+ * the simplified settings tab (`settings.plugins.tab`, id `talk`). All data
+ * arrives through the `remote.talk` namespace; synthesized audio is drained
+ * through `talk/pending` and played by the WebView.
  *
  * @module dsh-talk/client
  */
@@ -26,6 +27,7 @@ import { installTalkStyles } from './styles.ts'
 import type {
   TalkMode,
   TalkModeResult,
+  TalkPendingResult,
   TalkPlayResult,
   TalkSettingsInput,
   TalkSettingsResult,
@@ -62,7 +64,7 @@ interface SlotsFace {
 
 /**
  * Browser plugin body: dictionaries, the scoped stylesheet, the Remote
- * contribution mount, the voice button slot, and the settings tab.
+ * contribution mount, the two composer buttons, and the settings tab.
  *
  * @param ctx - client root context.
  */
@@ -88,6 +90,8 @@ export async function apply(ctx: Context): Promise<void> {
       unwrap<TalkPlayResult>(await talk.playLatest(sessionId), 'playLatest')
     const stop: TalkVoiceInjected['stop'] = async () =>
       unwrap<TalkStopResult>(await talk.stop(), 'stop')
+    const pending: TalkVoiceInjected['pending'] = async (since) =>
+      unwrap<TalkPendingResult>(await talk.pending(since), 'pending')
     const applyMode: TalkModeInjected['applyMode'] = async (mode: TalkMode) =>
       unwrap<TalkModeResult>(await talk.applyMode(mode), 'applyMode')
     const applySettings: TalkSettingsTabInjected['applySettings'] = async (settings: TalkSettingsInput) =>
@@ -110,6 +114,7 @@ export async function apply(ctx: Context): Promise<void> {
         status,
         playLatest,
         stop,
+        pending,
         ...(typeof sessionId === 'string' && sessionId !== '' ? { sessionKey: sessionId } : {}),
       }),
     }, TalkVoiceButton))

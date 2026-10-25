@@ -1,7 +1,7 @@
 {
   "name": "dsh-talk",
-  "version": "0.5.3",
-  "description": "Host-played text-to-speech for DeepSeek Harness: a speak tool and automatic reply read-aloud through MiniMax speech-2.8-turbo (SSE → ffplay) or a local MLX Qwen3-TTS clone worker, plus a composer auto/manual mode switch, a play/stop button and optional audio export.",
+  "version": "0.6.0-android.1",
+  "description": "MiniMax cloud text-to-speech for the Android build of DeepSeek Harness: a speak tool, automatic reply read-aloud, an auto/manual mode switch and a play/stop composer button, with the synthesized MP3 played by the Web UI (no local engine, no host audio player).",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jamesylj/dsh-talk.git"
@@ -32,7 +32,6 @@
   },
   "files": [
     "lib",
-    "worker",
     "cordis.patch.yml",
     "CHANGELOG.md",
     "SECURITY.md",
@@ -76,8 +75,7 @@
       "dispose": "supported"
     },
     "permissions": [
-      "network:outbound",
-      "subprocess:spawn"
+      "network:outbound"
     ],
     "compatibility": {
       "dshVersions": [
@@ -94,7 +92,7 @@
       "id": "voice-session-loop",
       "kind": "surface",
       "invocation": "speak",
-      "expected": "speaks agent replies aloud on the host through MiniMax speech-2.8-turbo or a local MLX Qwen3-TTS clone, with an auto/manual mode switch, a manual play/stop composer button, and optional bounded audio export"
+      "expected": "speaks agent replies aloud with MiniMax speech-2.8-turbo on the Android build, with automatic read-aloud, an auto/manual mode switch, and a play/stop composer button whose audio is played by the Web UI"
     },
     "evidence": {
       "install": null,

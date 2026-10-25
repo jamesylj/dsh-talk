@@ -17,8 +17,8 @@ import type { Session } from '@deepseek-ai/dsh-session'
 /** What triggered one spoken utterance. */
 export type SpeechReason = 'speak-tool' | 'turn-end' | 'auto-reply' | 'manual'
 
-/** Engines that can synthesize speech in this plugin. */
-export type SpeechTtsEngine = 'minimax' | 'mlx'
+/** The only engine in the `android` branch: MiniMax cloud TTS. */
+export type SpeechTtsEngine = 'minimax'
 
 /** Payload of one speech session event. */
 export interface DshTalkSpeechEvent {

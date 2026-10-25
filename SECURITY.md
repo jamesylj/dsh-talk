@@ -28,36 +28,30 @@ That flow keeps the report confidential while we triage, and it is the channel w
 
 ## Scope
 
-This plugin gives the harness host-played text-to-speech: automatic read-aloud of
-finished replies, a `speak` tool, and two composer controls (auto/manual mode and
-play/stop). Two engines remain: **MiniMax** `speech-2.8-turbo` (cloud) and a local
-**Qwen3-TTS Base / MLX** clone worker. There is no microphone input, no
-transcription, and no browser audio playback. Its own guarantees:
+This is the **android** line of the plugin: MiniMax cloud text-to-speech for the
+DeepSeek Harness Android app (WebView UI). One engine remains — MiniMax
+`speech-2.8-turbo` — and the synthesized MP3 is played by the Web UI, not by a
+host process. There is no local TTS model, no audio player subprocess, no
+microphone input, and no audio export to disk. Its own guarantees:
 
-- Audio bytes never enter the model context, the session log, or the
-  diagnostics log — only sanitized metadata (utterance id, engine, reason, byte
-  count, error, and the spoken text) is logged as a `plugin:dsh-talk/speech`
-  session event. Server and connection state are not logged.
+- Audio bytes never enter the model context or the session log. Only sanitized
+  metadata (utterance id, engine, reason, byte count, error, and the spoken
+  text) is logged as a `plugin:dsh-talk/speech` session event.
+- Synthesized audio stays in host memory until the Web UI drains it through the
+  local Remote channel; it is never written to a file, and ⏹ drops the queue.
+  The queue is bounded (6 utterances / 24 MiB) and a 16 MiB per-utterance cap
+  fails loudly instead of exhausting memory.
 - Spoken text and every display/log surface pass the sanitizers (credentials,
   JWTs, bearer headers, control characters, temp paths are redacted or bounded).
   The diagnostics log is bounded (256 KiB, one rotation) and redacted.
-- Local engines run through the official `ctx.subprocess` seam with argv arrays
-  (no shell string interpolation) and abort-signal wiring; the MLX model runs in
-  the configured Python venv. `ffplay` (Homebrew `ffmpeg`) is used only as the
-  MiniMax streaming player and is never given text.
-- **MiniMax leaves the machine**: the text you hear is sent to MiniMax for
+- **MiniMax leaves the device**: the text you hear is sent to MiniMax for
   synthesis and billed per character, under MiniMax's terms. The API key is
   resolved per utterance from the configured environment variable or the
-  harness credential store and is never logged or written to the export
-  directory.
+  harness credential store and is never logged.
+- The plugin spawns no local process and declares only `network:outbound`; the
+  installed app's own sandbox and permission model apply to everything else.
 - The settings tab writes config only as append-only profile-patch fragments
   with a timestamped backup; it never rewrites the profile file.
-- Audio export is **off by default** (`tts.export.enabled: false`). When enabled,
-  synthesized audio is written to a bounded directory (`<home>/.dsh-talk/audio`
-  by default; at most 20 files / 24 hours, matching names only) and the file path
-  is returned in the speak outcome. Deleting that directory removes the
-  persisted audio.
-- MiniMax model output is untrusted input to the player only; the plugin never
-  treats synthesized bytes as executable content.
 
-Vulnerabilities in the harness itself should be reported to the official harness maintainers instead.
+Vulnerabilities in the harness or in the Android app itself should be reported
+to their respective maintainers instead.
