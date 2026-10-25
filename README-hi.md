@@ -1,23 +1,12 @@
 <div align="center">
 
 # 🎙️ dsh-talk
-- **1024 स्टोर चैनल**: एक बार `npm i -g dsh1024`, फिर `dsh1024 plugin --profile web add dsh-talk` ([deepseek1024.com](https://deepseek1024.com) इंस्टॉल रैंकिंग में गिना जाता है)।
 
-**DeepSeek Harness के लिए वॉइस-फर्स्ट सत्र लूप: उससे बोलें और उत्तर सुनें।**
-
-*माइक दबाएँ, बोलें और जवाब ज़ोर से पढ़ा जाता है — बोलते ही रुकावट।*
+**DeepSeek Harness के लिए होस्ट पर टेक्स्ट-टू-स्पीच: एजेंट के उत्तर बोलकर सुनाए
+जाते हैं, और कंपोज़र के पास का बटन नवीनतम उत्तर पढ़ता या रोकता है।**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Gitee](https://img.shields.io/badge/Gitee-mirror-c71d23?logo=gitee)](https://gitee.com/perrylink/dsh-talk)
-[![DSH plugin](https://img.shields.io/badge/dsh--plugin-✅-green)](https://github.com/topics/dsh-plugin)
-[![dsh-doctor](https://raw.githubusercontent.com/PerryLink/dsh-plugin-doctor/main/badges/PerryLink__dsh-talk.svg)](https://github.com/PerryLink/dsh-plugin-doctor#verified-徽章)
-[![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-top-rated.svg)](https://dsh.market/)
-[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
-[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-talk/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-talk/actions)
-[![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-talk?label=version)](https://github.com/PerryLink/dsh-talk/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-talk)](https://www.npmjs.com/package/dsh-talk)
-[![npm downloads](https://img.shields.io/npm/dm/dsh-talk)](https://www.npmjs.com/package/dsh-talk)
-[![dshfind](https://dshfind.com/api/badge/PerryLink/dsh-talk?metric=downloads&lang=hi)](https://dshfind.com/hi/plugins/PerryLink/dsh-talk?ref=badge)
 
 [English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
 
@@ -25,420 +14,106 @@
 dsh plugin --profile <name> add dsh-talk
 ```
 
-
 </div>
 
----
+## इंस्टॉल
 
+```sh
+dsh plugin --profile web add github:PerryLink/dsh-talk
+dsh plugin --profile web add dsh-talk
+pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz
+```
 
-**📖 इकोसिस्टम नॉलेज बेस** — मापे गए आँकड़े, मार्केटिंग नहीं: [डेवलपमेंट गाइड · चयन डेटा · रखरखाव मानदंड](https://perrylink.github.io/dsh-plugin-guide/)।
+हटाने के लिए: `dsh plugin --profile web remove dsh-talk`.
 
-<!-- star-cta -->
-## इंस्टॉल और अनइंस्टॉल
+## यह क्या करता है
 
-- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add github:PerryLink/dsh-talk` — `prepare` स्क्रिप्ट केवल प्रोडक्शन निर्भरताओं से बिल्ड करती है।
-- **npm चैनल** (प्रकाशित रिलीज़): `dsh plugin --profile web add dsh-talk`।
-- **tarball चैनल**: इस रेपो में `pnpm pack`, फिर `dsh plugin --profile web add ./dsh-talk-<version>.tgz`।
-- **अनइंस्टॉल**: `dsh plugin --profile web remove dsh-talk` (या प्रोफ़ाइल पैच से पंक्ति हटाएँ)।
+- **`speak` टूल**: एजेंट होस्ट मशीन पर बोलता है।
+- **ऑटो-रीड**: टर्न खत्म होने पर सहायक का अंतिम उत्तर बोलकर सुनाया जाता है
+  (कोड ब्लॉक हटाकर, `autoReply.maxChars` तक सीमित)।
+- **प्ले बटन**: क्लिक पर वर्तमान सत्र का नवीनतम उत्तर पढ़ा जाता है; बोलते समय
+  दोबारा क्लिक करने पर रुक जाता है।
+- **टर्न-एंड घोषणा**: जब उत्तर नहीं पढ़ा गया और कोई ऑडियो नहीं चल रहा हो।
+- **वैकल्पिक ऑडियो एक्सपोर्ट** (डिफ़ॉल्ट रूप से बंद)।
 
-> यदि pnpm इस पैकेज के लिए `ERR_PNPM_IGNORED_BUILDS` दिखाता है (esbuild का हानिरहित प्लेटफ़ॉर्म-बाइनरी सत्यापन), तो अपने `pnpm-workspace.yaml` में `allowBuilds: { esbuild: true }` जोड़ें — `dsh` CLI सटीक स्निपेट प्रिंट करता है।
-
-## ⭐ 如果它帮到了你
-
-यह प्लगइन [DSH प्लगइन परिवार](https://github.com/PerryLink) का हिस्सा है (95 प्लगइन, सभी Apache-2.0)। अगर यह उपयोगी लगे, तो **एक स्टार दें** — इससे कोई सुविधा अनलॉक नहीं होती, पर अगला व्यक्ति इसे खोज में आसानी से पा लेता है।
-
-*English:* part of a 95 plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
-
-## What is dsh-talk?
-
-DeepSeek Harness के लिए वॉइस-फर्स्ट सत्र लूप: उससे बोलें और उत्तर सुनें।
-
-माइक दबाएँ, बोलें और जवाब ज़ोर से पढ़ा जाता है — बोलते ही रुकावट।
-
-![dsh-talk कार्यप्रवाह आरेख: इंस्टॉल → पैनल खोलें → कार्य।](docs/assets/dsh-talk-flow.svg)
-
-*कार्यप्रवाह: इंस्टॉल → पैनल खोलें → कार्य। नीचे के उदाहरण वास्तविक कमांड सतह का उपयोग करते हैं।*
-
-
-*वही रन, एनिमेटेड।*
-
-## संगतता
-
-| सतह | स्थिति |
-|---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1` (2026-09-24 को अनुकूलित: peers का तीसरा खंड + `engines.dsh` + `manifestVersion: 1`, और मासिक Compat workflow उसी लाइन पर एंकर); 2026-09-24 को पूरी gate chain हरी (दो typecheck रूलर, 86 टेस्ट, build, self-contained, artifacts, pack)। npm dev/test लाइन `0.1.7-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0 || >=0.1.7-0 <0.2.0`। |
-| Node | `^22.19.0 \|\| >=24.0.0` |
-| ब्राउज़र | Web Speech + MediaRecorder (Chrome/Edge में सर्वश्रेष्ठ); बाकी के लिए host के ट्रांसक्रिप्शन/TTS इंजन |
-
-## आपको क्या मिलता है
-
-`dsh-talk` वॉइस लूप को दोनों दिशाओं में बंद करता है:
-
-- **`speak` टूल** — एजेंट अपने उत्तर ज़ोर से पढ़ता है। TTS इंजन: ब्राउज़र वॉइस, `edge-tts` (नेटवर्क न्यूरल वॉइस), `piper` (स्थानीय), या `/usr/bin/say` के ज़रिए macOS सिस्टम वॉइस (स्थानीय और ऑफ़लाइन)। ऑडियो ब्राउज़र में बजता है; स्थानीय इंजन के साथ वह एक फ़ाइल में भी लिखा जाता है और टूल का परिणाम उसका निरपेक्ष पथ (`audioPath`) साथ रखता है ताकि अन्य टूल उसे ले सकें; जो host इसे वहन कर सकते हैं वहाँ सत्र लॉग सैनिटाइज़ की गई बात दर्ज करता है (सुरक्षा सीमाएँ देखें)।
-- **कंपोज़र माइक बटन** — दबाएँ, बोलें और ट्रांसक्रिप्शन इनपुट बॉक्स में भर जाता है (या सीधे सबमिट होता है)। STT इंजन: ब्राउज़र का Web Speech (अंतरिम परिणामों सहित), FunASR HTTP सर्वर या स्थानीय `whisper.cpp`।
-- **बोलते ही रुकावट** — बोलना शुरू करते ही चल रहा प्लेबैक रुक जाता है (client→host, `talk` Remote नेमस्पेस पर)।
-- **सीमित रुकावट** — स्वतः वाचन और घोषणाएँ कभी चल रही बात को नहीं रोकतीं: लंबा उत्तर पूरा पढ़ा जाता है और कतारबद्ध आवाज़ उसके बाद बजती है; केवल माइक्रोफ़ोन (या उसी सत्र में स्पष्ट `speak` + `interrupt: true`) वर्तमान वाचन रोकता है।
-- **इवेंट घोषणाएँ** — टर्न पूरा होना, लंबित स्वीकृतियाँ (waterfall-सुरक्षित: गेट कभी ब्लॉक नहीं करता) और त्रुटियाँ, म्यूट स्विच व कॉन्फ़िगर करने योग्य वाक्यों सहित।
-- **उत्तर की स्वतः वाचन** — डिफ़ॉल्ट रूप से टर्न पूरा होने पर सहायक का अंतिम उत्तर उसी speak पाइपलाइन से ज़ोर से पढ़ा जाता है; अबॉर्ट, ब्लॉक और त्रुटि वाले टर्न पर पुरानी "Turn complete." घोषणा बनी रहती है, और `autoReply.enabled: false` सभी जगह उसे बहाल कर देता है (उत्तर की स्वतः वाचन देखें)।
-- **सेटिंग्स टैब** — इंजन/भाषा चयन, घोषणा स्विच और स्वतः वाचन स्विच, append-only प्रोफ़ाइल-पैच ऑपरेशन के रूप में सहेजे जाते हैं (बैकअप सहित)।
+0.5 में वॉइस इनपुट, ब्राउज़र `<audio>` प्लेबैक, edge-tts, piper, macOS `say`
+और सेटिंग्स राइट-बैक हटा दिए गए हैं।
 
 ## त्वरित शुरुआत
 
-```sh
-dsh plugin --profile web add github:PerryLink/dsh-talk
-```
+1. बंडल इंस्टॉल करें और प्रोफ़ाइल रीस्टार्ट करें।
+2. इंजन कॉन्फ़िगर करें: डिफ़ॉल्ट MiniMax (API key चाहिए), MLX स्थानीय
+   फ़ॉलबैक।
+3. एजेंट से `speak` कहलवाएँ या सामान्य संदेश भेजें — टर्न खत्म होने पर उत्तर
+   पढ़ा जाएगा।
+4. अंतिम उत्तर दोबारा सुनने/रोकने के लिए ▶ / ⏹ बटन।
 
-```sh
-# 1. बंडल को अपने प्रोफ़ाइल में इंस्टॉल करें
-dsh plugin --profile web add github:PerryLink/dsh-talk
-
-# या npm से (प्रकाशित रिलीज़)
-dsh plugin --profile web add dsh-talk
-
-# 2. पुनः आरंभ करें और पंक्ति सत्यापित करें
-dsh --profile web --dump-config | grep -A2 'id: talk'
-```
-
-फिर कंपोज़र के पास माइक दबाएँ और बोलें; या एजेंट से बोलने को कहें:
-
-```
-> speak टूल से "नमस्ते" कहो।
-```
-
-## रिमोट ब्राउज़र को सुरक्षित ओरिजिन चाहिए
-
-ब्राउज़र माइक्रोफ़ोन (`getUserMedia` / Web Speech / MediaRecorder) केवल **सुरक्षित संदर्भ**
-में काम करता है: `https://…` या `http://localhost` / `http://127.0.0.1`. सादा
-`http://<LAN-IP>:3081` पेज — दूसरी मशीन के Safari सहित — टॉक सेटिंग सही होने पर भी
-माइक्रोफ़ोन नहीं देता।
-
-रिमोट ब्राउज़र के लिए इनमें से एक उपाय करें:
-
-- HTTPS रिवर्स प्रॉक्सी या टनल से Web UI खोलें;
-- SSH से पोर्ट फ़ॉरवर्ड करके क्लाइंट पर `http://localhost:<port>` खोलें;
-- UI और ब्राउज़र को एक ही मशीन पर रखें।
-
-`stt.engine: funasr` / `whisper` केवल *ट्रांसक्रिप्शन कहाँ चलेगा* बदलता है, ब्राउज़र की
-कैप्चर अनुमति नहीं; रिकॉर्डिंग के लिए सुरक्षित संदर्भ फिर भी आवश्यक है।
-
-### उदाहरण
-
-ये वास्तविक सतहें हैं; सेटिंग्स टैब और माइक बटन UI प्रवेश हैं।
-
-#### विस्तृत उदाहरण
-
-**कमांड**
-
-~~~sh
-speak
-~~~
-
-**इनपुट**
-
-~~~json
-{"text":"hello","engine":"browser"}
-~~~
-
-**आउटपुट**
-
-~~~text
-Spoke hello aloud with the browser engine. No audio file: the browser engine synthesizes in the browser.
-~~~
-
-*स्रोत `plugins/dsh-talk/tests/lifecycle.spec.ts:124-137; renderer at src/tool.ts:47-64`*
-
-#### विफलता शाखा
-
-**इनपुट**
-
-~~~text
-{"text":"   "}
-~~~
-
-**आउटपुट**
-
-~~~text
-Error: dsh-talk: speak text must not be empty
-~~~
-
-*स्रोत `plugins/dsh-talk/src/tool.ts:124; plugins/dsh-talk/tests/tool.spec.ts:41-44`*
-
-#### संक्षिप्त उदाहरण
-
-- `talk:status`
-- `talk:transcribe`
+MiniMax के लिए होस्ट पर `ffplay` (Homebrew `ffmpeg`) ज़रूरी है:
+`brew install ffmpeg`.
 
 ## कॉन्फ़िगरेशन
 
-सभी समायोजन Schemastery `Config` फ़ील्ड हैं (cordis.yml से बदले जा सकते हैं)। `cordis.patch.yml` हर कुंजी को इनलाइन समझाता है।
-
 | कुंजी | डिफ़ॉल्ट | अर्थ |
 |---|---|---|
-| `record.enabled` | `true` | कंपोज़र माइक बटन दिखाएँ |
-| `record.hotkey` | *(कोई नहीं)* | वैकल्पिक टॉगल हॉटकी, जैसे `"alt+r"` |
-| `record.maxSeconds` | `60` | रिकॉर्डिंग सीमा सेकंड में (1..600) |
-| `record.autoSubmit` | `false` | ट्रांसक्रिप्शन को उपयोगकर्ता संदेश के रूप में सबमिट करें (false = ड्राफ्ट भरें) |
-| `record.vad.enabled` / `silenceMs` / `energyThreshold` | `true` / `1500` / `0.01` | ध्वनि-गतिविधि पहचान: मौन रिकॉर्डिंग स्वतः समाप्त करता है (AudioContext अनुपस्थित होने पर मैनुअल स्टॉप) |
-| `stt.engine` | `auto` | `auto` / `web` / `funasr` / `whisper`; auto पहले कॉन्फ़िगर किया स्थानीय इंजन, फिर Web Speech |
-| `stt.language` | `auto` | BCP-47 भाषा या `auto` |
-| `stt.interim` | `true` | अंतरिम ट्रांसक्रिप्शन दिखाएँ (Web Speech) |
-| `stt.silenceFinaliseMs` | `4000` | इतनी मिलीसेकंड तक आवाज़ न आने पर लगातार Web Speech रोकें (500..15000) |
-| `stt.funasr.url` | *(कोई नहीं)* | FunASR इन्फ़रेंस एंडपॉइंट; `funasr` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
-| `stt.whisper.modelPath` | *(कोई नहीं)* | whisper.cpp मॉडल; `whisper` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `minimax` / `mlx` / `piper`; auto पहले piper, फिर edge-tts, फिर ब्राउज़र वॉइस; `macos` सिस्टम वॉइस उपयोग करता है (केवल macOS); `minimax` क्लाउड से MiniMax `speech-2.8-turbo` स्ट्रीम करता है (API key आवश्यक); `mlx` Apple Silicon पर क्वांटाइज़्ड Qwen3-TTS स्थानीय रूप से चलाता है |
-| `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | MLX TTS venv का Python इंटरप्रेटर (Apple Silicon स्थानीय अनुमान) |
-| `tts.mlx.script` | *(bundled)* | Worker स्क्रिप्ट; खाली = bundled `worker/mlx_tts.py` |
-| `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | क्वांटाइज़्ड Qwen3-TTS मॉडल निर्देशिका या HF repo id |
-| `tts.mlx.voice` | `Vivian` | Qwen3-TTS CustomVoice वॉइस |
-| `tts.mlx.language` | `Chinese` | मॉडल को दिया गया भाषा तर्क |
-| `tts.mlx.chunkChars` | `100` | वाक्य खंड आकार (20..500); छोटा = पहला ऑडियो जल्दी |
-| `tts.mlx.player` | `/usr/bin/afplay` | सिस्टम प्लेयर जो अगला खंड बनते समय वर्तमान खंड बजाता है |
-| `tts.mlx.temperature` | `0.6` | सैंपलिंग तापमान (0..1.5); कम = अधिक स्थिर, बोली/भाषा drift कम |
-| `tts.mlx.topP` | `0.9` | Nucleus सैंपलिंग top-p (0.05..1) |
-| `tts.mlx.topK` | `30` | Top-k सैंपलिंग (0..200) |
-| `tts.mlx.mode` | `custom` | `custom` = preset CustomVoice वॉइस; `clone` = `tts.mlx.refAudio` की आवाज़ क्लोन करें (केवल Base मॉडल) |
-| `tts.mlx.refAudio` | *(कोई नहीं)* | clone मोड के लिए संदर्भ WAV; `mode: clone` पर आवश्यक |
-| `tts.mlx.refText` | *(कोई नहीं)* | `tts.mlx.refAudio` का सटीक ट्रांसक्रिप्ट; केवल `cloneMode: icl` के लिए |
-| `tts.mlx.cloneMode` | `xvector` | `xvector` (केवल स्पीकर एम्बेडिंग, सबसे तेज़) या `icl` (ऑडियो + टेक्स्ट) |
-| `tts.minimax.apiKey` / `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | *(कोई नहीं)* / `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | MiniMax API key: स्पष्ट मान, फिर निर्दिष्ट environment variable, फिर harness credential store (`refs:` अनुभाग); key कभी लॉग नहीं होती |
-| `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | सिंक्रोनस T2A endpoint, मॉडल id (`speech-2.8-turbo` या `speech-2.8-hd`) और सिस्टम वॉइस id |
-| `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(कोई नहीं)* / `Chinese` / `32000` | वैकल्पिक भावना (`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`), भाषा बूस्ट और आउटपुट सैंपल दर (Hz) |
-| `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | प्लेयर जो SSE MP3 को stdin से पढ़कर बजाता है; `streaming: false` पर पूरा ऑडियो बफ़र करके afplay से बजाया जाता है |
-| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | प्रति API अनुरोध वर्ण (लंबा टेक्स्ट वाक्य सीमाओं पर बँटता है) और निष्क्रियता टाइमआउट मिलीसेकंड में (ऑडियो प्राप्ति या प्लेयर लेखन पर रीसेट; 5000..600000) |
-| `tts.rate` | `0` | edge-tts/piper के लिए गति ऑफ़सेट प्रतिशत में (-50..50); macOS `say` की गति भी इसी से स्केल होती है |
-| `tts.macos.command` | `/usr/bin/say` | macOS `say` निष्पादन (स्थानीय और ऑफ़लाइन; `macos` इंजन केवल macOS पर) |
-| `tts.macos.voice` | `Eddy (中文（中国大陆）)` | इंस्टॉल वॉइस का नाम ठीक वैसा जैसा `say -v '?'` सूचीबद्ध करता है; अज्ञात नाम अस्वीकार होता है, चुपचाप डिफ़ॉल्ट वॉइस उपयोग नहीं होती |
-| `tts.macos.rate` | `175` | `say` के लिए आधार शब्द-प्रति-मिनट; `tts.rate` इसे प्रतिशत में स्केल करता है (60..400) |
-| `tts.fallbackToBrowser` | `true` | स्थानीय इंजन विफल होने पर ब्राउज़र वॉइस पर गिरें |
-| `tts.browser.voiceName` | *(कोई नहीं)* | पसंदीदा ब्राउज़र वॉइस नाम; न मिलने पर प्लेटफ़ॉर्म डिफ़ॉल्ट उपयोग होता है |
-| `tts.browser.rate` | `1` | ब्राउज़र SpeechSynthesis गति (0.1..10) |
-| `tts.browser.pitch` | `1` | ब्राउज़र SpeechSynthesis पिच (0..2) |
-| `tts.piper.modelPath` | *(कोई नहीं)* | piper वॉइस मॉडल; `piper` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
-| `tts.export.enabled` | `true` | स्थानीय रूप से सिंथेसाइज़्ड ऑडियो को फ़ाइल में लिखें और उसका पथ `audioPath` के रूप में लौटाएँ |
-| `tts.export.dir` | `<home>/.dsh-talk/audio` | निर्यात निर्देशिका; `~` = home, सापेक्ष पथ home के अंतर्गत हल होता है (कार्यस्थान में कभी नहीं) |
-| `tts.export.maxFiles` | `20` | निर्देशिका में रखी फ़ाइलें, अभी लिखी गई सहित (1..1000) |
-| `tts.export.maxAgeMinutes` | `1440` | इससे पुरानी निर्यात फ़ाइलें अगली बार लिखते समय हटा दी जाती हैं (1..10080) |
-| `announce.enabled` | `true` | घोषणाओं का मास्टर स्विच |
-| `announce.onTurnEnd` / `onApproval` / `onError` | `true` | कौन से इवेंट बोले जाएँ |
-| `announce.messages.*` | *"Turn complete." आदि* | बोले जाने वाले वाक्य |
-| `autoReply.enabled` | `true` | टर्न पूरा होने पर सहायक का अंतिम उत्तर ज़ोर से पढ़ें (speak पाइपलाइन; उत्तर की स्वतः वाचन देखें) |
-| `autoReply.maxChars` | `600` | पढ़े जाने वाले उत्तर की वर्ण सीमा; लंबे उत्तर किसी रिक्त स्थान पर काटे जाते हैं (1..100000) |
-| `autoReply.skipIfToolSpoke` | `true` | जिस टर्न ने पहले `speak` टूल से बोल दिया, उसे स्वतः न पढ़ें |
-| `autoReply.skipSubagents` | `true` | सबएजेंट/टीम-एजेंट सत्र कभी स्वतः न पढ़ें |
-| `autoReply.reasons` | `completed`, `max-tokens` | वे `turn/end` कारण जो पढ़े जाते हैं (`completed` / `max-tokens`); बाकी नहीं पढ़े जाते और घोषणा पर लौट जाते हैं |
-| `interrupt` | `true` | बोलते ही चलता प्लेबैक रुकता है |
-| `maxSpeakChars` | `20000` | speak टूल के टेक्स्ट की सीमा (1..100000) |
-| `maxAudioCacheBytes` | `8388608` | मेमोरी में सिंथेसाइज़्ड ऑडियो कैश सीमा (1 MiB..64 MiB) |
+| `tts.engine` / `tts.fallback` | `minimax` / `true` | इंजन (`minimax` या `mlx`); MiniMax विफल होने पर संदर्भ WAV हो तो MLX |
+| `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | API key का स्रोत: पहले environment, फिर harness credential store (`refs:`); key कभी लॉग नहीं होती |
+| `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | endpoint, मॉडल और सिस्टम वॉइस |
+| `tts.minimax.player` / `tts.minimax.chunkChars` / `tts.minimax.requestTimeoutMs` | `ffplay` / `2000` / `120000` | प्लेयर, प्रति अनुरोध वर्ण और idle timeout (ms) |
+| `tts.mlx.command` / `tts.mlx.script` / `tts.mlx.model` / `tts.mlx.refAudio` | venv python / bundled worker / Base 4-bit मॉडल / *(कोई नहीं)* | स्थानीय Qwen3-TTS Base x-vector क्लोन इंजन |
+| `tts.export.enabled` / `tts.export.dir` | `false` / `<home>/.dsh-talk/audio` | ऑडियो फ़ाइल में लिखकर `audioPath` लौटाता है |
+| `announce.enabled` | `true` | ऑटो-रीड न होने पर टर्न-एंड घोषणा |
+| `autoReply.enabled` / `autoReply.maxChars` | `true` / `600` | ऑटो-रीड और उसकी वर्ण सीमा |
+| `maxSpeakChars` | `20000` | एक `speak` कॉल की सीमा |
 
-`stt.silenceFinaliseMs` और `record.vad.silenceMs` अलग-अलग तंत्र हैं: पहला लगातार Web Speech पहचान में आवाज़ न मिलने पर ट्रांसक्रिप्ट को अंतिम रूप देता है; दूसरा MediaRecorder का ऊर्जा-आधारित डिटेक्टर है जो रिकॉर्डिंग समाप्त करता है (और `record.autoSubmit` चालू होने पर उसे भेज देता है)। दोनों अलग पाइपलाइनों में चलते हैं और कोई साझा स्थिति नहीं रखते।
+## होस्ट प्लेबैक इंजन
 
-### उत्तर की स्वतः वाचन
+- **MiniMax**: सिंक्रोनस T2A को `stream: true` से कॉल करता है; SSE के MP3
+  खंड सीधे एक `ffplay` के stdin में जाते हैं।
+- **MLX**: resident worker क्वांटाइज़्ड Qwen3-TTS **Base** मॉडल गर्म रखता है
+  और `tts.mlx.refAudio` को केवल x-vector से क्लोन करता है (preset voice या ICL
+  नहीं)। खंड एक ही `sounddevice` स्ट्रीम में जाते हैं।
+- नई आवाज़ केवल **उसी सत्र** की चल रही आवाज़ रोकती है; auto-read और घोषणाएँ
+  `interrupt: false` भेजती हैं।
+- बटन `talk/playLatest` और `talk/stop` उपयोग करता है।
 
-डिफ़ॉल्ट रूप से (`autoReply.enabled: true`), पूरे हुए टर्न का सहायक का अंतिम उत्तर `speak` टूल वाली उसी speak पाइपलाइन से ज़ोर से पढ़ा जाता है: वही इंजन, वॉइस, ऑडियो कैश और निर्यात नियम। `autoReply.enabled: false` इसे बंद कर देता है और घोषणा पथ को पहले जैसा ही छोड़ देता है।
-
-- **कौन से टर्न**: केवल `autoReply.reasons` में सूचीबद्ध `turn/end` कारण — डिफ़ॉल्ट `completed` और `max-tokens`। अबॉर्ट, ब्लॉक और त्रुटि वाले टर्न नहीं पढ़े जाते और पुरानी "Turn complete." घोषणा बनाए रखते हैं। उस टर्न का केवल अंतिम कमिट किया गया `assistant/message` लिया जाता है, इसलिए टूल-कॉल वाला टर्न अपना अंतिम टेक्स्ट पढ़ता है, कोई अंतरिम चरण नहीं।
-- **क्या पढ़ा जाता है**: उत्तर के टेक्स्ट ब्लॉक न्यूलाइन से जोड़े जाते हैं, फ़ेंस्ड कोड ब्लॉक और इनलाइन बैकटिक्स हटा दिए जाते हैं — कोड कभी गद्य की तरह नहीं पढ़ा जाता — फिर `autoReply.maxChars` वर्णों पर रिक्त स्थान की सीमा पर काटा जाता है (डिफ़ॉल्ट 600, 1..100000)। कोड हटाने के बाद खाली रहने वाला उत्तर नहीं पढ़ा जाता।
-- **घोषणा का दमन**: जिस टर्न का उत्तर पढ़ा जाता है, उसके लिए सामान्य "Turn complete." वाक्य नहीं बोला जाता, इसलिए दोनों कभी एक साथ नहीं बोलते। जिस टर्न को नहीं निपटाया गया (सूची में न होने वाला अंत कारण, सबएजेंट सत्र) उसे `announce.onTurnEnd` चालू होने पर घोषणा मिलती है।
-- **दोहरा वाचन नहीं**: `autoReply.skipIfToolSpoke: true` उस टर्न को छोड़ता है जिसने पहले `speak` टूल कॉल किया; एक उत्तर सहायक संदेश id से डीडुप्लिकेट होता है, इसलिए दोहरा ट्रिगर उसे कभी दो बार नहीं पढ़ता।
-- **सबएजेंट**: `autoReply.skipSubagents: true` सबएजेंट या टीम-एजेंट द्वारा बनाए सत्र कभी नहीं पढ़ता (`origin: subagent` या शून्य से अधिक प्रत्यायोजन गहराई)।
-- **प्लेबैक क्रमबद्ध**: नया उच्चारण पिछले ऑडियो प्लेयर को रोककर मुक्त करता है और चल रही ब्राउज़र `SpeechSynthesis` रद्द करता है, इसलिए लगातार स्वतः पढ़े गए टर्न कभी एक साथ नहीं बजते।
-- **Wire**: यह उच्चारण कारण `auto-reply` के साथ दर्ज होता है, जिसे `talk:speech` प्रोजेक्शन और `talk/latest` ले जाते हैं, और स्थानीय इंजन से सिंथेसाइज़ होने पर किसी भी अन्य उच्चारण की तरह निर्यात होता है।
-- **सेटिंग्स स्विच**: सेटिंग्स → प्लगइन → Talk पैनल वही स्विच दिखाता है जो `autoReply.enabled` है; सहेजने पर यह प्रोफ़ाइल पैच में जुड़ता है, इसलिए लागू करने के लिए प्रोफ़ाइल पुनः लोड करें (वर्ण सीमा और दो स्किप गार्ड केवल कॉन्फ़िग में रहते हैं)।
-
-### ऑडियो फ़ाइल निर्यात
-
-स्थानीय इंजन (`edge-tts`, `piper`, `macos`) से सिंथेसाइज़ हर उच्चारण ब्राउज़र द्वारा बजाई जाने वाली इन-मेमोरी कैश के **अतिरिक्त** एक फ़ाइल में भी लिखा जाता है। ब्राउज़र इंजन क्लाइंट पर सिंथेसिस करता है, इसलिए वहाँ कोई फ़ाइल निर्यात नहीं होती — यह स्थिति **स्पष्ट रूप से बताई जाती है**, चुपचाप नहीं छोड़ी जाती।
-
-- **कहाँ**: `tts.export.dir`, डिफ़ॉल्ट `<home>/.dsh-talk/audio` — प्लगइन की अपनी निर्देशिका। यह जानबूझकर host की कार्यशील निर्देशिका नहीं है, इसलिए कोई रिपॉज़िटरी कभी नहीं भरती; सापेक्ष `tts.export.dir` भी इसी कारण home के अंतर्गत हल होता है।
-- **नाम**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) या `.wav` (piper/macos)। समय-मुहर UTC है, इसलिए नाम कालक्रम में क्रमबद्ध होते हैं, और टोकन utterance id से आता है, जिससे फ़ाइल अपनी स्पीच लॉग प्रविष्टि तक वापस पहुँचती है (`dsh-talk/speech`, या `0.2.1+` host पर `plugin:dsh-talk/speech`)। बोला गया पाठ कभी फ़ाइल-नाम का हिस्सा नहीं होता।
-- **सफ़ाई**: हर लेखन पर सीमित — पहले आयु से, फिर संख्या से। `tts.export.maxAgeMinutes` (डिफ़ॉल्ट 1440 = 24 घंटे) से पुरानी फ़ाइलें हटाई जाती हैं, फिर सबसे पुरानी तब तक हटती हैं जब तक निर्देशिका में `tts.export.maxFiles` (डिफ़ॉल्ट 20, अभी लिखी गई सहित) से अधिक न रहें। सफ़ाई केवल इस प्लगइन के अपने `speech-…` पैटर्न से मेल खाते नाम हटाती है, इसलिए साझा निर्देशिका की अन्य फ़ाइलें कभी नहीं छूती। डिफ़ॉल्ट पर निर्देशिका में अधिकतम 20 फ़ाइलें (कुछ MB) रहती हैं और एक दिन से पुराना कुछ नहीं।
-- **विफलता**: निर्यात बोली का अतिरिक्त हिस्सा है, कभी पूर्वशर्त नहीं। निर्देशिका बन न सके या लिखी न जा सके तो उच्चारण फिर भी बजता है और परिणाम `audioExport: "failed"` के साथ कारण बताता है; सफ़ाई की विफलताएँ अनदेखी कर अगले लेखन पर दोबारा प्रयास होता है।
-- **मॉडल को दिखने वाला पथ**: `speak` टूल का कैननिकल मान `audioPath` रखता है (साथ में `audioExport`, और फ़ाइल न होने पर `exportNote`), और वही पथ रेंडर किए गए टेक्स्ट में भी है — इसलिए एजेंट उसे सीधे किसी ऐसे अन्य टूल को दे सकता है जो फ़ाइल लेता है, जैसे किसी मैसेजिंग प्लगइन का फ़ाइल आर्गुमेंट। इवेंट घोषणाएँ (टर्न समाप्ति, स्वीकृति, त्रुटि) उसी पाइपलाइन से सिंथेसाइज़ होती हैं और उसी तरह निर्यात होती हैं, वही सीमाएँ लागू रहती हैं।
-- **फ़ाइल किसी अन्य प्लगइन को सौंपना**: जो उपभोक्ता केवल अपने workspace के भीतर की फ़ाइलें स्वीकार करता है — जैसे `dsh-wechat` का `send_wechat`, जो अपनी `allowAnyFilePath` सेटिंग चालू न होने पर कॉल करने वाले सत्र के workspace के बाहर का `file_path` अस्वीकार करता है — वह आपके home निर्देशिका के पथ को अस्वीकार करेगा। उस प्रवाह के लिए `tts.export.dir` को उसी workspace के भीतर की निर्देशिका पर सेट करें (उदाहरण `<workspace>/.dsh-talk-audio`); डिफ़ॉल्ट जानबूझकर हर रिपॉज़िटरी के बाहर रहता है।
-
-## टूल और सतहें
-
-| सतह | प्रकार | टिप्पणियाँ |
-|---|---|---|
-| `speak` | टूल | टेक्स्ट ज़ोर से बोलता है (browser/edge-tts/macos/piper); प्रति-कॉल इंजन/वॉइस ओवरराइड; कैननिकल JSON परिणाम |
-| माइक बटन | `conversation.input.left` स्लॉट | रिकॉर्ड → ट्रांसक्राइब → ड्राफ्ट भरें (या सबमिट); दबाते ही रुकावट |
-| सेटिंग्स टैब | `settings.plugins.tab` (id `talk`) | इंजन/भाषा/घोषणा/स्वतः वाचन स्विच; append-only सहेज |
-| `talk:*` | Typert Remote | `status`, `audio`, `transcribe`, `applySettings`, `interrupt` (host नेमस्पेस) |
-
-## अनुमतियाँ और डेटा
-
-- **अनुमतियाँ**: प्लगइन प्लेबैक के लिए बाइट-सीमित इन-मेमोरी ऑडियो कैश रखता है और स्थानीय इंजन के साथ सिंथेसाइज़्ड ऑडियो अपनी सीमित निर्देशिका में लिखता है (`tts.export.*`, डिफ़ॉल्ट `<home>/.dsh-talk/audio`, डिफ़ॉल्ट रूप से अधिकतम 20 फ़ाइलें और 24 घंटे); माइक अनुमति ब्राउज़र-मध्यस्थ है। सेटिंग्स टैब केवल प्रोफ़ाइल में पैच खंड जोड़ता है (टाइमस्टैम्प बैकअप सहित) — फ़ाइल कभी दोबारा नहीं लिखता।
-- **डेटा**: ऑडियो के बाइट कभी मॉडल संदर्भ या सत्र लॉग में नहीं जाते। `dsh-talk/speech` इवेंट उच्चारण id, इंजन, कारण, आकार, सैनिटाइज़ टेक्स्ट और लागू होने पर ब्राउज़र वॉइस, गति और पिच रखता है; जिन host की सत्र शब्दावली इस इवेंट प्रकार को जानती है वे इसे सीधे पाते हैं, `0.2.1+` host इसे प्रायोगिक ignorable plugin record (`plugin:dsh-talk/speech` — होस्ट संगतता देखें) के रूप में पाते हैं, और एनवलप-रहित host कुछ नहीं लिखते। `speak` टूल का परिणाम निर्यात फ़ाइल का पथ रखता है (प्लगइन की अपनी निर्देशिका में स्थायी कलाकृति), और बाकी हर डिस्प्ले/लॉग सतह रिडैक्शन हेल्पर से गुज़रती है, इसलिए क्रेडेंशियल, JWT, bearer हेडर और अस्थायी पथ बाहर ही रहते हैं।
-- **नेटवर्क**: केवल आपके कॉन्फ़िगर किए इंजन से संपर्क होता है। `edge-tts` नेटवर्क सिंथेसिस करता है, FunASR अपने कॉन्फ़िगर किए एंडपॉइंट का उपयोग करता है, और Chrome का `webkitSpeechRecognition` ट्रांसक्रिप्शन के लिए माइक्रोफ़ोन ऑडियो Google के सर्वर पर भेजता है; ब्राउज़र का `speechSynthesis` playback स्थानीय रहता है।
-
-## सुरक्षा सीमाएँ
-
-- **मॉडल-दृश्य ⟺ लॉग्ड** — मॉडल केवल speak टूल का कैननिकल मान और रेंडर टेक्स्ट देखता है। `dsh-talk/speech` इवेंट — जहाँ host की शब्दावली इसे जानती है वहाँ सामान्य सत्र इवेंट, `0.2.1+` host पर ignorable `plugin:dsh-talk/speech` record — केवल तब जोड़ा जाता है जब host इसे वहन कर सके (होस्ट संगतता देखें); `tool/call` + `tool/result` इवेंट हमेशा पुनर्निर्माण योग्य निशान बने रहते हैं।
-- **स्वीकृति घोषणाएँ कभी ब्लॉक नहीं करतीं** — `approval/request` लिसनर हमेशा `next()` बुलाता है।
-- **सैनिटाइज़्ड आउटपुट** — क्रेडेंशियल और अस्थायी ऑडियो पथ लॉग या डिस्प्ले तक नहीं पहुँचते। एकमात्र जानबूझकर अपवाद speak परिणाम में निर्यात ऑडियो का पथ है: वह प्लगइन की अपनी निर्देशिका में स्थायी फ़ाइल है (फिर भी सीक्रेट रिडैक्टर से गुज़रती है) और उसका उद्देश्य ही उसे किसी अन्य टूल को सौंपना है।
-- **होस्ट संगतता** — `dsh-talk/speech` इवेंट तीन-मार्गी गेट से जोड़ा जाता है: जिन host की ज्ञात-प्रकार शब्दावली इस इवेंट को कवर करती है वे इसे सीधे जोड़ते हैं और कॉल यह बताती है; जो host प्रायोगिक `appendPluginRecord` API (`0.2.1+`) प्रकाशित करते हैं वे `plugin:dsh-talk/speech` नाम का ignorable plugin record जोड़ते हैं (plugin record की प्रकार-व्याकरण `plugin:` के बाद लोअरकेस स्लैश खंड है), जिसे `talk:speech` प्रोजेक्शन सामान्य इवेंट की तरह ही फोल्ड करता है — इसी से क्लाइंट पर live playback बहाल होता है; जिन host में दोनों नहीं हैं — `0.1.1-rc.2` तक की हर जारी लाइन, `0.1.2-alpha` लाइन, `0.1.2-rc.1`, और `0.1.6-alpha.2`, जिसका `Session.append` केवल surface intent स्टैम्प कर सकता है, `ignorable` एनवलप नहीं (वह फ़ील्ड केवल पठन संगतता के लिए रखा गया है) — वे कोई append नहीं पाते, इसलिए वहाँ स्पीच कभी सत्र लॉग को दूषित नहीं करती। यह छूट अब मौन नहीं है: host प्रति-सत्र जोड़े/छोड़े गए काउंटर रखता है और `talk/latest(sessionId)` उन्हें लौटाता है; क्लाइंट की सत्र-स्तरीय playback सूची खाली रहती है और speak टूल के परिणाम ही पुनर्निर्माण योग्य निशान हैं। plugin record चैनल के लिए `0.2.1+` host चाहिए।
-- **Fail loud** — अमान्य इंजन, सीमा से बाहर मान और बिना आवश्यक मॉडल/एंडपॉइंट के इंजन माउंट पर असफल होते हैं।
-
-## ज्ञात सीमाएँ
-
-- **ब्राउज़र समर्थन**: Web Speech और MediaRecorder क्षमता-पहचान से चलते हैं; बिना उनके बटन अक्षम हो जाता है और कॉन्फ़िगर होने पर host इंजन (FunASR/whisper.cpp) ट्रांसक्राइब कर सकते हैं।
-- **स्थानीय इंजन आपकी इंस्टॉल हैं**: `edge-tts`, `piper`, `whisper.cpp` के निष्पादन और मॉडल अलग से इंस्टॉल करने होते हैं; `macos` इंजन को केवल सिस्टम का `/usr/bin/say` चाहिए।
-- **edge-tts में 403 (`WSServerHandshakeError`)** — पुरानी edge-tts बिल्ड को सेवा अस्वीकार करती है; edge-tts ≥ 7.3.1 पर अपडेट करें (समर्पित venv ठीक है) और `tts.edgeTts.command` को उसके निरपेक्ष पथ पर सेट करें।
-- **ऑडियो फ़ाइलों के लिए स्थानीय इंजन चाहिए**: ब्राउज़र वॉइस क्लाइंट पर सिंथेसिस करती है, इसलिए वहाँ `speak` कोई `audioPath` नहीं लौटाता (परिणाम यह स्पष्ट बताता है), और विफल होकर ब्राउज़र पर गिरा स्थानीय इंजन भी कोई फ़ाइल नहीं छोड़ता। निर्यात फ़ाइलें प्लगइन की अपनी सीमित निर्देशिका में रहती हैं — स्थान, नाम और सफ़ाई के लिए "ऑडियो फ़ाइल निर्यात" देखें।
-- **रिकॉर्डिंग प्रारूप**: ब्राउज़र अपने नेटिव MediaRecorder कोडेक से रिकॉर्ड करता है; whisper.cpp को WAV रिकॉर्डर या सर्वर-साइड रूपांतरण की आवश्यकता हो सकती है।
-- **सेटिंग्स रीलोड पर लागू होती हैं**: टैब प्रोफ़ाइल पैच में जोड़ता है; प्रोफ़ाइल रीलोड (या वेब-ऐप पुनः आरंभ) बदलाव सक्रिय करता है।
-- **live playback इतिहास केवल एनवलप-रहित `0.1.x` host पर खाली रहता है**: `0.1.1-rc.2`, `0.1.2-alpha` लाइन, `0.1.2-rc.1` और `0.1.6-alpha.2` पर host की शब्दावली `dsh-talk/speech` को नहीं जानती और plugin record चैनल उपलब्ध नहीं है, इसलिए गेट कुछ नहीं लिखता और क्लाइंट की सत्र-स्तरीय playback सूची खाली रहती है; `talk/latest(sessionId)` फिर भी नवीनतम utterance (कारण `auto-reply` सहित) और छोड़े गए काउंटर लौटाता है। `0.2.1+` host पर plugin record चैनल live playback बहाल करता है। स्पीच स्वयं, माइक, सेटिंग्स टैब और टूल अप्रभावित रहते हैं।
-- **dsh-talk ≤ 0.2.1 द्वारा लिखे पुराने लॉग को cold load से पहले मरम्मत की ज़रूरत हो सकती है**: `0.2.1` तक के संस्करण बिना मार्कर वाले `dsh-talk/speech` events जोड़ते थे। `0.1.0-rc.7` या नए host पर, जिस session की log में ये पहले से हों उसका अगला cold load `SessionFormatUnsupportedError` के साथ विफल होता है। सुधार: host रोकें, session की `.jsonl` log का बैकअप लें, हर उस JSON पंक्ति में शीर्ष-स्तर सदस्य के रूप में `"ignorable":true` जोड़ें जिसका `"type"` `"dsh-talk/speech"` है (उदाहरण के लिए, शुरुआती `{` के ठीक बाद `"ignorable":true,` डालें), फिर session दोबारा खोलें। बाकी कुछ नहीं बदलता और कुछ भी खोता नहीं; इस संस्करण के नए append कभी बिना-मार्कर इवेंट नहीं जोड़ते।
-
-## विकास
+## MiniMax सेटअप
 
 ```sh
-pnpm install        # node ^22.19 || >=24
-pnpm run typecheck  # tsc: src + tests स्थानीय हार्नेस चेकआउट के विरुद्ध
-pnpm run typecheck:ci  # tsc प्रकाशित 0.1.7-alpha.2 प्रकारों के विरुद्ध (बिना paths)
-pnpm test           # vitest: 154 टेस्ट, 17 सुइट
-pnpm run build      # tsc घोषणाएँ + tsdown बंडल (lib/)
-pnpm run verify:self-contained  # निर्भरता स्पेक registry से हल होती हैं
-pnpm run verify:artifacts       # निर्मित ESM फ़ेस + क्लाइंट ModuleLoader हैंडशेक
-pnpm pack           # प्रकाशित tarball
+export MINIMAX_CN_API_KEY=...
 ```
 
-## अन्य DSH प्लगइनों के साथ अंतर-संचालनीयता
+सामान्य वॉइस: `Chinese (Mandarin)_Warm_Girl`, `female-yujie`,
+`Chinese (Mandarin)_Gentleman`. कीमत लगभग ¥2 प्रति 10,000 अक्षर (एक चीनी अक्षर
+दो गिना जाता है); पढ़ा जाने वाला टेक्स्ट मशीन से बाहर जाता है।
 
-**DSH `0.2.0-rc.2`** (वह रनटाइम जिसके लिए यह README प्रकाशित है) और 2026-10-05 को सर्वे किए गए उच्च-स्टार प्लगइन सेट के विरुद्ध सत्यापित।
+## MLX सेटअप
 
-यह प्लगइन अन्य प्लगइनों में **हस्तक्षेप नहीं करता**, उन उच्च-स्टार प्लगइनों सहित जो व्यापक रूप से इंस्टॉल हैं:
+1. `~/.dsh-talk/mlx-tts-venv` में `mlx-audio` वाला venv बनाएँ।
+2. Qwen3-TTS **Base** 4-bit चेकपॉइंट
+   `~/.dsh-talk/models/qwen3-tts-0.6b-base-4bit` में डाउनलोड करें।
+3. एक संदर्भ WAV बनाएँ और `tts.mlx.refAudio` उस पर सेट करें।
 
-- **कोई टूल-नाम टकराव नहीं।** सभी टूल नेमस्पेस युक्त हैं; कोई भी ऐसा नंगा नाम नहीं लेता जो पहले से किसी अंतर्निहित टूल या अन्य प्लगइन का हो।
-- **कोई सर्विस-की टकराव नहीं।** यह केवल `talk` प्रदान करता है; यह key न अंतर्निहित सीम है और न किसी सर्वे किए गए उच्च-स्टार प्लगइन द्वारा प्रदान की जाती है।
-- **कोई स्लॉट टकराव नहीं।** यह कोई क्लाइंट slot key पंजीकृत नहीं करता, इसलिए `shadows-shipped-ui` सीट के लिए प्रतिस्पर्धा नहीं करता।
-- **कोई HTTP रूट टकराव नहीं।** यह कोई `webServer` प्रीफ़िक्स पंजीकृत नहीं करता।
-- **कोई patch-लेयर टकराव नहीं।** बंडल patch केवल अपनी पंक्ति `insert` करता है; कभी किसी अंतर्निहित पंक्ति का `config` ओवरराइड नहीं करता।
-- **कोई वैश्विक परिवर्तन नहीं।** यह प्रोटोटाइप नहीं बदलता, `process.env` नहीं लिखता, और वैश्विक fetch dispatcher प्रतिस्थापित नहीं करता।
+## बटन और सेटिंग्स
 
-**साझा ईवेंट लिसनर रचना से ही अहस्तक्षेपी हैं।** यह क्रम-संवेदनशील ईवेंट `approval/request` को `ctx.on()` से देखता है — Cordis का **ब्रॉडकास्ट** पंजीकरण, जहाँ हर लिसनर चलता है और कोई किसी दूसरे को वंचित नहीं कर सकता। **यहाँ प्रत्येक लिसनर `next()` से डेलिगेट करता है**, इसलिए श्रृंखला कभी शॉर्ट-सर्किट नहीं होती:
+बटन खाली होने पर ▶ और बोलते समय ⏹ दिखाता है। सेटिंग्स टैब में इंजन, MiniMax
+वॉइस और auto-reply स्विच हैं; सेव करने पर प्रोफ़ाइल patch में एक ऑपरेशन जुड़ता
+है (लागू करने के लिए रीलोड करें)।
 
-स्थैतिक प्रमाण: इस रिपॉज़िटरी पर `dsh-plugin-doctor` के K10–K13 सभी `pass` हैं।
+## समस्या निवारण
 
-## Topics
+- आवाज़ नहीं: `ffplay` नहीं है ( `brew install ffmpeg` ) या API key नहीं; 
+  `plugin:dsh-talk/speech` इवेंट में `error` दर्ज होता है।
+- `minimax: 1004: invalid api key`: key environment या credential store में नहीं
+  मिली।
+- MLX पहली बार धीमा: मॉडल लोड होता है; बाद में worker दोबारा उपयोग होता है।
 
-`dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `voice`, `speech`, `tts`, `stt`, `speech-to-text`, `text-to-speech`, `microphone`
+## सुरक्षा और विकास
 
-## Contributors
+- API key हर utterance पर हल होती है और कभी लॉग नहीं होती।
+- हर utterance `plugin:dsh-talk/speech` इवेंट के रूप में दर्ज होता है, ऑडियो
+  बाइट्स नहीं।
+- जाँच: `pnpm test`, `pnpm run build`, `pnpm run check:readmes`.
 
-- [@PerryLink](https://github.com/PerryLink) — निर्माता और मेंटेनर: वॉइस पाइपलाइन, स्पीच इंजन, माइक रिकॉर्डर, इवेंट घोषणाएँ, प्रोजेक्शन यूनिट और पाँच-भाषा दस्तावेज़।
+## लाइसेंस
 
-## PerryLink DSH Plugin Family
-
-यह प्रोजेक्ट [PerryLink](https://github.com/PerryLink) के DeepSeek Harness प्लगइन परिवार का हिस्सा है। पूरी सूची नीचे संक्षिप्त रखी गई है ताकि हर README की पहली स्क्रीन छोटी रहे; हर पंक्ति और उसकी स्थिति देखने के लिए इसे खोलें।
-
-<details>
-<summary>सभी प्लगइन खोलें</summary>
-
-| प्लगइन | स्थिति |
-|---|---|
-| **[dsh-aqua-input-check](https://github.com/PerryLink/dsh-aqua-input-check)** |  |
-| **[dsh-archive-check](https://github.com/PerryLink/dsh-archive-check)** |  |
-| **[dsh-auto-review](https://github.com/PerryLink/dsh-auto-review)** |  |
-| **[dsh-autotier](https://github.com/PerryLink/dsh-autotier)** |  |
-| **[dsh-bid-ca-precheck](https://github.com/PerryLink/dsh-bid-ca-precheck)** |  |
-| **[dsh-bid-qual-check](https://github.com/PerryLink/dsh-bid-qual-check)** |  |
-| **[dsh-cert-mcp](https://github.com/PerryLink/dsh-cert-mcp)** |  |
-| **[dsh-checkpoint-rewind](https://github.com/PerryLink/dsh-checkpoint-rewind)** |  |
-| **[dsh-click](https://github.com/PerryLink/dsh-click)** |  |
-| **[dsh-composer-history](https://github.com/PerryLink/dsh-composer-history)** |  |
-| **[dsh-contract-stance](https://github.com/PerryLink/dsh-contract-stance)** |  |
-| **[dsh-customs-doc-check](https://github.com/PerryLink/dsh-customs-doc-check)** |  |
-| **[dsh-data-quality](https://github.com/PerryLink/dsh-data-quality)** |  |
-| **[dsh-demurrage-ledger](https://github.com/PerryLink/dsh-demurrage-ledger)** |  |
-| **[dsh-doublecheck](https://github.com/PerryLink/dsh-doublecheck)** |  |
-| **[dsh-drill-script-check](https://github.com/PerryLink/dsh-drill-script-check)** |  |
-| **[dsh-eia-guide-check](https://github.com/PerryLink/dsh-eia-guide-check)** |  |
-| **[dsh-emergency-plan](https://github.com/PerryLink/dsh-emergency-plan)** |  |
-| **[dsh-essay-rubric-check](https://github.com/PerryLink/dsh-essay-rubric-check)** |  |
-| **[dsh-evidence-check](https://github.com/PerryLink/dsh-evidence-check)** |  |
-| **[dsh-export-ctl-check](https://github.com/PerryLink/dsh-export-ctl-check)** |  |
-| **[dsh-fast](https://github.com/PerryLink/dsh-fast)** |  |
-| **[dsh-fmea-table-check](https://github.com/PerryLink/dsh-fmea-table-check)** |  |
-| **[dsh-forecast-penalty](https://github.com/PerryLink/dsh-forecast-penalty)** |  |
-| **[dsh-fund-research](https://github.com/PerryLink/dsh-fund-research)** |  |
-| **[dsh-github](https://github.com/PerryLink/dsh-github)** |  |
-| **[dsh-gongwen-flow-check](https://github.com/PerryLink/dsh-gongwen-flow-check)** |  |
-| **[dsh-gongwen-word-check](https://github.com/PerryLink/dsh-gongwen-word-check)** |  |
-| **[dsh-guard-plan-qc](https://github.com/PerryLink/dsh-guard-plan-qc)** |  |
-| **[dsh-hazchem-check](https://github.com/PerryLink/dsh-hazchem-check)** |  |
-| **[dsh-hazplan-check](https://github.com/PerryLink/dsh-hazplan-check)** |  |
-| **[dsh-hidden-risk-map](https://github.com/PerryLink/dsh-hidden-risk-map)** |  |
-| **[dsh-hs-classify](https://github.com/PerryLink/dsh-hs-classify)** |  |
-| **[dsh-icd-rule-check](https://github.com/PerryLink/dsh-icd-rule-check)** |  |
-| **[dsh-industry-research](https://github.com/PerryLink/dsh-industry-research)** |  |
-| **[dsh-lawcite-adapter](https://github.com/PerryLink/dsh-lawcite-adapter)** |  |
-| **[dsh-laya](https://github.com/PerryLink/dsh-laya)** |  |
-| **[dsh-lc-doc-check](https://github.com/PerryLink/dsh-lc-doc-check)** |  |
-| **[dsh-learning-gap-check](https://github.com/PerryLink/dsh-learning-gap-check)** |  |
-| **[dsh-library](https://github.com/PerryLink/dsh-library)** |  |
-| **[dsh-local-ai](https://github.com/PerryLink/dsh-local-ai)** |  |
-| **[dsh-lsp-actions](https://github.com/PerryLink/dsh-lsp-actions)** |  |
-| **[dsh-mask](https://github.com/PerryLink/dsh-mask)** |  |
-| **[dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel)** |  |
-| **[dsh-medrec-qc](https://github.com/PerryLink/dsh-medrec-qc)** |  |
-| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** |  |
-| **[dsh-nsfc-form-check](https://github.com/PerryLink/dsh-nsfc-form-check)** |  |
-| **[dsh-nurse-record-check](https://github.com/PerryLink/dsh-nurse-record-check)** |  |
-| **[dsh-observe](https://github.com/PerryLink/dsh-observe)** |  |
-| **[dsh-origin-rvc-check](https://github.com/PerryLink/dsh-origin-rvc-check)** |  |
-| **[dsh-ota-review-check](https://github.com/PerryLink/dsh-ota-review-check)** |  |
-| **[dsh-output-styles](https://github.com/PerryLink/dsh-output-styles)** |  |
-| **[dsh-paper-doc-adapter](https://github.com/PerryLink/dsh-paper-doc-adapter)** |  |
-| **[dsh-permission-rules](https://github.com/PerryLink/dsh-permission-rules)** |  |
-| **[dsh-permit-report-check](https://github.com/PerryLink/dsh-permit-report-check)** |  |
-| **[dsh-pipeline-check](https://github.com/PerryLink/dsh-pipeline-check)** |  |
-| **[dsh-pleading-draft](https://github.com/PerryLink/dsh-pleading-draft)** |  |
-| **[dsh-plugin-doctor](https://github.com/PerryLink/dsh-plugin-doctor)** |  |
-| **[dsh-plugin-guide](https://github.com/PerryLink/dsh-plugin-guide)** |  |
-| **[dsh-plugin-kit](https://github.com/PerryLink/dsh-plugin-kit)** |  |
-| **[dsh-plugin-upgrade](https://github.com/PerryLink/dsh-plugin-upgrade)** |  |
-| **[dsh-policy-brief-draft](https://github.com/PerryLink/dsh-policy-brief-draft)** |  |
-| **[dsh-power-loss-split](https://github.com/PerryLink/dsh-power-loss-split)** |  |
-| **[dsh-power-ticket-check](https://github.com/PerryLink/dsh-power-ticket-check)** |  |
-| **[dsh-ppap-check](https://github.com/PerryLink/dsh-ppap-check)** |  |
-| **[dsh-protest-deadline](https://github.com/PerryLink/dsh-protest-deadline)** |  |
-| **[dsh-railway-window](https://github.com/PerryLink/dsh-railway-window)** |  |
-| **[dsh-repair-order-qc](https://github.com/PerryLink/dsh-repair-order-qc)** |  |
-| **[dsh-research-report](https://github.com/PerryLink/dsh-research-report)** |  |
-| **[dsh-review-reply-check](https://github.com/PerryLink/dsh-review-reply-check)** |  |
-| **[dsh-rulefile-check](https://github.com/PerryLink/dsh-rulefile-check)** |  |
-| **[dsh-safety-brief-check](https://github.com/PerryLink/dsh-safety-brief-check)** |  |
-| **[dsh-score](https://github.com/PerryLink/dsh-score)** |  |
-| **[dsh-session-sync](https://github.com/PerryLink/dsh-session-sync)** |  |
-| **[dsh-site-log-check](https://github.com/PerryLink/dsh-site-log-check)** |  |
-| **[dsh-skill-pack-security](https://github.com/PerryLink/dsh-skill-pack-security)** |  |
-| **[dsh-soe-decision-check](https://github.com/PerryLink/dsh-soe-decision-check)** |  |
-| **[dsh-soilwater-check](https://github.com/PerryLink/dsh-soilwater-check)** |  |
-| **[dsh-sop-sync-check](https://github.com/PerryLink/dsh-sop-sync-check)** |  |
-| **[dsh-spc-gbt-adapter](https://github.com/PerryLink/dsh-spc-gbt-adapter)** |  |
-| **[dsh-talk](https://github.com/PerryLink/dsh-talk)** |  |
-| **[dsh-tender-extract](https://github.com/PerryLink/dsh-tender-extract)** |  |
-| **[dsh-tender-matrix](https://github.com/PerryLink/dsh-tender-matrix)** |  |
-| **[dsh-test-drive](https://github.com/PerryLink/dsh-test-drive)** |  |
-| **[dsh-ticktick](https://github.com/PerryLink/dsh-ticktick)** |  |
-| **[dsh-translate](https://github.com/PerryLink/dsh-translate)** |  |
-| **[dsh-warranty-calc](https://github.com/PerryLink/dsh-warranty-calc)** |  |
-| **[dsh-budget](https://github.com/PerryLink/dsh-budget)** | 🧊 फ़्रोज़न — रिपॉज़िटरी README देखें |
-| **[dsh-claude-move](https://github.com/PerryLink/dsh-claude-move)** | 🧊 फ़्रोज़न — रिपॉज़िटरी README देखें |
-| **[dsh-defend](https://github.com/PerryLink/dsh-defend)** | 🧊 फ़्रोज़न — रिपॉज़िटरी README देखें |
-| **[dsh-draw](https://github.com/PerryLink/dsh-draw)** | 🧊 फ़्रोज़न — रिपॉज़िटरी README देखें |
-| **[dsh-reach](https://github.com/PerryLink/dsh-reach)** | 🧊 फ़्रोज़न — रिपॉज़िटरी README देखें |
-| **[dsh-background-agents](https://github.com/PerryLink/dsh-background-agents)** | 🚫 सेवानिवृत्त — रिपॉज़िटरी README देखें |
-| **[dsh-session-pin](https://github.com/PerryLink/dsh-session-pin)** | 🚫 सेवानिवृत्त — रिपॉज़िटरी README देखें |
-| **[dsh-team-rooms](https://github.com/PerryLink/dsh-team-rooms)** | 🚫 सेवानिवृत्त — रिपॉज़िटरी README देखें |
-
-</details>
-
-## License
-
-[Apache License 2.0](LICENSE) © 2026 dsh-talk contributors
-
-### DSH Desktop मार्केट से इंस्टॉल करें
-
-सभी PerryLink प्लगइन DSH Desktop के बिल्ट-इन मार्केट में देखे जा सकते हैं: **Market → Sources → add source → पेस्ट करें** `https://perrylink-dsh-catalog.perrylink.workers.dev/catalog-source.json` **→ चुनें**। इंस्टॉलेशन मार्केट के npm-identity सत्यापन और आपकी पुष्टि से ही होता है।
+Apache-2.0.

@@ -1,24 +1,14 @@
 <div align="center">
 
 # 🎙️ dsh-talk
-- **1024 store channel**: `npm i -g dsh1024` once, then `dsh1024 plugin --profile web add dsh-talk` (counts toward the [deepseek1024.com](https://deepseek1024.com) install ranking).
-[![Gitee](https://img.shields.io/badge/Gitee-mirror-c71d23?logo=gitee)](https://gitee.com/perrylink/dsh-talk)
-[![dshfind](https://dshfind.com/api/badge/PerryLink/dsh-talk?metric=downloads)](https://dshfind.com/plugins/PerryLink/dsh-talk?ref=badge)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-talk/badge)](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-talk)
 
-**Voice-first session loop for DeepSeek Harness: talk to it, hear it answer.**
-
-*Press the mic, speak, and the reply is spoken back — with speak-to-interrupt.*
+**Host-played text-to-speech for DeepSeek Harness: the agent's replies are read
+aloud, and one composer button reads — or stops — the latest reply.**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![DSH plugin](https://img.shields.io/badge/dsh--plugin-✅-green)](https://github.com/topics/dsh-plugin)
-[![dsh-doctor](https://raw.githubusercontent.com/PerryLink/dsh-plugin-doctor/main/badges/PerryLink__dsh-talk.svg)](https://github.com/PerryLink/dsh-plugin-doctor#verified-徽章)
-[![DSH Market](https://raw.githubusercontent.com/2BingLing/dsh-market/master/assets/readme/badge-top-rated.svg)](https://dsh.market/)
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
-[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-talk/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-talk/actions)
-[![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-talk?label=version)](https://github.com/PerryLink/dsh-talk/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-talk)](https://www.npmjs.com/package/dsh-talk)
-[![npm downloads](https://img.shields.io/npm/dm/dsh-talk)](https://www.npmjs.com/package/dsh-talk)
 
 [English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
 
@@ -26,425 +16,142 @@
 dsh plugin --profile <name> add dsh-talk
 ```
 
-
 </div>
 
----
+## Install
 
-**📖 Ecosystem knowledge base** — measured data, not marketing: [plugin development guide · plugin-selection data · maintenance criteria](https://perrylink.github.io/dsh-plugin-guide/).
+```sh
+# git channel (latest main)
+dsh plugin --profile web add github:PerryLink/dsh-talk
 
-<!-- star-cta -->
-## Install & uninstall
+# npm channel (published releases)
+dsh plugin --profile web add dsh-talk
 
-- **git channel** (latest `main`): `dsh plugin --profile web add github:PerryLink/dsh-talk` — the `prepare` script builds with production dependencies only.
-- **npm channel** (published releases): `dsh plugin --profile web add dsh-talk`.
-- **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-talk-<version>.tgz`.
-- **uninstall**: `dsh plugin --profile web remove dsh-talk` (or remove the row from the profile patch).
-
-> If pnpm reports `ERR_PNPM_IGNORED_BUILDS` for this package (esbuild's harmless platform-binary validation), add `allowBuilds: { esbuild: true }` to your `pnpm-workspace.yaml` — the `dsh` CLI prints the exact snippet.
-
-## ⭐ 如果它帮到了你
-
-这个插件是 [DSH 插件家族](https://github.com/PerryLink)的一员（95 个，全部 Apache-2.0）。如果你在用，**给个 star** —— 它不会解锁任何功能，但会让下一个人在搜索里更容易找到它。
-
-*English:* part of a 95 plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
-
-
-## What is dsh-talk?
-
-Voice-first session loop for DeepSeek Harness: talk to it, hear it answer.
-
-Press the mic, speak, and the reply is spoken back — with speak-to-interrupt.
-
-![Workflow diagram for dsh-talk: install → open panel → act.](docs/assets/dsh-talk-flow.svg)
-
-*Workflow overview: install → open panel → act. The examples below use the real command surface.*
-
-
-
-## Compatibility
-
-| Surface | Status |
-|---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1` (adapted 2026-09-24: third peer clause + `engines.dsh` + `manifestVersion: 1`, and the monthly Compat workflow anchored to that line); full gate chain green on 2026-09-24 (dual typecheck rulers, 86 tests, build, self-contained, artifacts, pack). npm dev/test line `0.1.7-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0 || >=0.1.6-0 <0.2.0 || >=0.1.7-0 <0.2.0`. |
-| Node | `^22.19.0 \|\| >=24.0.0` |
-| Browser | Web Speech + MediaRecorder (Chrome/Edge best); host transcription/TTS engines for the rest |
-
-## What you get
-
-`dsh-talk` closes the voice loop in both directions:
-
-- **`speak` tool** — the agent speaks its replies aloud. TTS engines: the browser voice, `edge-tts` (network neural voices), `piper` (local), or the macOS system voice through `/usr/bin/say` (local and offline). Audio plays in the browser; with a local engine it is also written to a file and the tool result carries the absolute path (`audioPath`) for other tools to consume; on hosts that can carry it, the session log records the sanitized utterance (see Security boundaries).
-- **Composer mic button** — press it, speak, and the transcription lands in the input box (or submits directly). STT engines: the browser's Web Speech (interim results included), a FunASR HTTP server, or local `whisper.cpp`.
-- **Speak-to-interrupt** — starting to talk stops whatever is playing (client → host over the `talk` Remote namespace).
-- **Scoped interruption** — auto-read and announcements never preempt an in-flight utterance: a long reply is read to the end and queued speech follows it; only the mic (or an explicit same-session `speak` with `interrupt: true`) stops the current read.
-- **Event announcements** — turn completion, pending approvals (waterfall-safe: never blocks the gate), and errors, with a mute switch and configurable phrases.
-- **Automatic reply read-aloud** — by default the assistant's final reply is spoken when a turn completes, through the same speak pipeline; aborted, blocked, and error turns keep the "Turn complete." announcement, and `autoReply.enabled: false` restores it everywhere (see Automatic reply read-aloud).
-- **Settings tab** — engine/language selects, announcement switches, and the auto-read toggle, saved as append-only profile-patch operations with backups.
-
-```text
-browser                                host
-  🎙 press ──▶ interrupt ─────────────────▶ talk/interrupt
-  record (MediaRecorder / Web Speech)
-  transcribe (browser) or talk/transcribe ─▶ FunASR / whisper.cpp
-  setDraft(text) or submit()  ◀── talk:speech projection ── speak tool / announcements
-  ▶ play audio (talk/audio or speechSynthesis)
+# tarball channel
+pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz
 ```
+
+Uninstall with `dsh plugin --profile web remove dsh-talk`.
+
+## What it does
+
+- **`speak` tool** — the agent speaks a reply on the host machine.
+- **Auto-reply** — when a turn ends, the assistant's final reply is read aloud
+  automatically (code blocks stripped, long replies capped by `autoReply.maxChars`).
+- **Composer play button** — click to read the newest assistant reply of the
+  current session; click again while it is speaking to stop it.
+- **Turn-end announcement** — a short "Turn complete." line when a finished turn
+  was not auto-read and nothing else is playing.
+- **Optional audio export** — every host synthesis can be written to a bounded
+  file directory and returned as `audioPath` (off by default).
+
+Voice input, browser `<audio>` playback, edge-tts, piper, the macOS `say` engine
+and the settings write-back of v0.4 were removed in 0.5: both remaining engines
+play on the host, so the browser never fetches audio and no playback
+projection is needed.
 
 ## Quick start
 
-```sh
-dsh plugin --profile web add github:PerryLink/dsh-talk
-```
+1. Install the bundle and restart the profile.
+2. Configure an engine (see Configuration). MiniMax is the default and needs an
+   API key; MLX is the offline clone fallback.
+3. Ask the agent to use `speak`, or just send a normal message — the reply is
+   read aloud when the turn ends.
+4. Use the ▶ / ⏹ button next to the composer to replay or stop the latest reply.
 
-```sh
-# 1. install the bundle into your profile
-dsh plugin --profile web add github:PerryLink/dsh-talk
-
-# or from npm (published releases)
-dsh plugin --profile web add dsh-talk
-
-# 2. restart and verify the row
-dsh --profile web --dump-config | grep -A2 'id: talk'
-```
-
-Then press the microphone next to the composer and talk; ask the agent to `speak` its reply:
-
-```
-> Say "hello" with the speak tool.
-```
-
-## Remote browsers need a secure origin
-
-The browser microphone (`getUserMedia` / Web Speech / MediaRecorder) only works in a
-**secure context**: `https://…` or `http://localhost` / `http://127.0.0.1`. A plain
-`http://<LAN-IP>:3081` page — including Safari on another machine — will not expose
-the microphone, even if the Talk settings are correct.
-
-For a remote browser, use one of:
-
-- open the Web UI through an HTTPS reverse proxy or tunnel;
-- SSH-forward the port and open `http://localhost:<port>` on the client;
-- keep the UI on the same machine as the browser.
-
-`stt.engine: funasr` / `whisper` changes *where transcription runs*, not the browser
-capture permission; recording still needs the secure context.
-
-### Examples
-
-These are the real surfaces; the settings tab and mic button are the UI entry points.
-
-#### Detailed example
-
-**Command**
-
-~~~sh
-speak
-~~~
-
-**Input**
-
-~~~json
-{"text":"hello","engine":"browser"}
-~~~
-
-**Output**
-
-~~~text
-Spoke hello aloud with the browser engine. No audio file: the browser engine synthesizes in the browser.
-~~~
-
-*Observed from `plugins/dsh-talk/tests/lifecycle.spec.ts:124-137; renderer at src/tool.ts:47-64`*
-
-#### Failure branch
-
-**Input**
-
-~~~text
-{"text":"   "}
-~~~
-
-**Output**
-
-~~~text
-Error: dsh-talk: speak text must not be empty
-~~~
-
-*Observed from `plugins/dsh-talk/src/tool.ts:124; plugins/dsh-talk/tests/tool.spec.ts:41-44`*
-
-#### Brief examples
-
-- `talk:status`
-- `talk:transcribe`
+`ffplay` (from Homebrew `ffmpeg`) must be on the host `PATH` for MiniMax
+playback: `brew install ffmpeg`.
 
 ## Configuration
 
-All tunables are Schemastery `Config` fields (changeable from cordis.yml). `cordis.patch.yml` documents each key inline.
+All keys live under the `talk` row's `config` in the profile patch layer.
+`cordis.patch.yml` in this repository documents each key inline.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `record.enabled` | `true` | Show the composer mic button |
-| `record.hotkey` | *(none)* | Optional toggle hotkey, e.g. `"alt+r"` |
-| `record.maxSeconds` | `60` | Recording cap in seconds (1..600) |
-| `record.autoSubmit` | `false` | Submit the transcription as a user message (false = fill the draft) |
-| `record.vad.enabled` / `silenceMs` / `energyThreshold` | `true` / `1500` / `0.01` | Voice-activity detection: silence auto-ends the recording (degrades when `AudioContext` is absent) |
-| `stt.engine` | `auto` | `auto` / `web` / `funasr` / `whisper`; auto prefers a configured local engine, then Web Speech |
-| `stt.language` | `auto` | BCP-47 language or `auto` |
-| `stt.interim` | `true` | Show interim transcriptions (Web Speech) |
-| `stt.silenceFinaliseMs` | `4000` | Stop continuous Web Speech recognition after this many milliseconds without speech (500..15000) |
-| `stt.funasr.url` | *(none)* | FunASR inference endpoint; required when the engine is `funasr`; an empty value counts as not configured |
-| `stt.whisper.modelPath` | *(none)* | whisper.cpp model; required when the engine is `whisper`; an empty value counts as not configured |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `minimax` / `mlx` / `piper`; auto prefers piper, then edge-tts, then the browser voice; `macos` uses the system voice (macOS hosts only); `minimax` streams MiniMax `speech-2.8-turbo` from the cloud (API key required); `mlx` runs a quantized Qwen3-TTS model locally on Apple Silicon |
-| `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | Python interpreter of the MLX TTS venv (Apple Silicon local inference) |
-| `tts.mlx.script` | *(bundled)* | Worker script; unset = the bundled `worker/mlx_tts.py` |
-| `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | Quantized Qwen3-TTS model directory or HF repo id |
-| `tts.mlx.voice` | `Vivian` | Qwen3-TTS CustomVoice speaker |
-| `tts.mlx.language` | `Chinese` | Language argument passed to the model |
-| `tts.mlx.chunkChars` | `100` | Sentence chunk size (20..500); smaller = faster first audio, more calls |
-| `tts.mlx.player` | `/usr/bin/afplay` | System player that plays each chunk while the next one synthesizes |
-| `tts.mlx.temperature` | `0.6` | Sampling temperature (0..1.5); lower is more stable and less prone to dialect/language drift |
-| `tts.mlx.topP` | `0.9` | Nucleus sampling top-p (0.05..1) |
-| `tts.mlx.topK` | `30` | Top-k sampling (0..200) |
-| `tts.mlx.mode` | `custom` | `custom` = preset CustomVoice speaker; `clone` = clone the voice in `tts.mlx.refAudio` (Base model only) |
-| `tts.mlx.refAudio` | *(none)* | Reference WAV for clone mode; required when `mode` is `clone` |
-| `tts.mlx.refText` | *(none)* | Exact transcript of `tts.mlx.refAudio`; required only for `cloneMode: icl` |
-| `tts.mlx.cloneMode` | `xvector` | `xvector` (speaker embedding only, fastest) or `icl` (audio + text, closer detail) |
-| `tts.minimax.apiKey` / `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | *(none)* / `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | MiniMax API key: explicit value, then the named environment variable, then the harness credential store (`refs:` section); the key is never logged |
-| `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | Synchronous T2A endpoint, model id (`speech-2.8-turbo` or `speech-2.8-hd`), and system voice id |
-| `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(none)* / `Chinese` / `32000` | Optional emotion (`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`), language boost, and output sample rate in Hz |
-| `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | Player that reads the SSE MP3 from stdin while it is generated; set `streaming: false` to buffer the whole utterance and play it with afplay instead |
-| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | Characters per API request (longer text splits at sentence boundaries) and the idle timeout in milliseconds (reset by every incoming audio chunk and player write; 5000..600000) |
-| `tts.rate` | `0` | Rate offset in percent (-50..50) for edge-tts/piper; also scales the macOS `say` rate |
-| `tts.macos.command` | `/usr/bin/say` | macOS `say` executable (local and offline; the `macos` engine only exists on macOS) |
-| `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Installed voice name exactly as `say -v '?'` lists it; an unknown name is rejected instead of silently using the system default |
-| `tts.macos.rate` | `175` | Baseline words per minute for `say`; `tts.rate` scales it by percent (60..400) |
-| `tts.fallbackToBrowser` | `true` | Fall back to the browser voice when a local engine fails |
-| `tts.browser.voiceName` | *(none)* | Preferred browser voice name; an unknown name uses the platform default |
-| `tts.browser.rate` | `1` | Browser SpeechSynthesis rate (0.1..10) |
-| `tts.browser.pitch` | `1` | Browser SpeechSynthesis pitch (0..2) |
-| `tts.piper.modelPath` | *(none)* | piper voice model; required when the engine is `piper`; an empty value counts as not configured |
-| `tts.export.enabled` | `true` | Write locally synthesized audio to a file and return its path as `audioPath` |
-| `tts.export.dir` | `<home>/.dsh-talk/audio` | Export directory; `~` = home, a relative path resolves under home (never the workspace) |
-| `tts.export.maxFiles` | `20` | Files retained in the export directory, counting the one just written (1..1000) |
-| `tts.export.maxAgeMinutes` | `1440` | Exported files older than this many minutes are pruned on the next write (1..10080) |
-| `announce.enabled` | `true` | Master switch for event announcements |
-| `announce.onTurnEnd` / `onApproval` / `onError` | `true` | Which events are spoken |
-| `announce.messages.*` | *"Turn complete." etc.* | Spoken phrases |
-| `autoReply.enabled` | `true` | Read the assistant's final reply of a completed turn aloud through the speak pipeline (see Automatic reply read-aloud) |
-| `autoReply.maxChars` | `600` | Cap on the reply characters read aloud; longer replies are truncated at a whitespace boundary (1..100000) |
-| `autoReply.skipIfToolSpoke` | `true` | Do not auto-read a turn that already spoke through the `speak` tool |
-| `autoReply.skipSubagents` | `true` | Never auto-read subagent/team-agent sessions |
-| `autoReply.reasons` | `completed`, `max-tokens` | Turn-end reasons that are read aloud (`completed` / `max-tokens`); other reasons are not read and fall back to the announcement |
-| `interrupt` | `true` | Talking stops current playback |
-| `maxSpeakChars` | `20000` | Cap on the speak tool's text length (1..100000) |
-| `maxAudioCacheBytes` | `8388608` | In-memory synthesized-audio cache cap (1 MiB..64 MiB) |
+| `tts.engine` / `tts.fallback` | `minimax` / `true` | Engine (`minimax` or `mlx`); when MiniMax fails, retry with MLX if a reference WAV is configured |
+| `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | Where the API key is read from (environment first, then the harness credential store's `refs:` section); the key is never logged |
+| `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | Endpoint, model id and system voice id |
+| `tts.minimax.player` / `tts.minimax.chunkChars` / `tts.minimax.requestTimeoutMs` | `ffplay` / `2000` / `120000` | Streaming player, characters per request (long text is split at sentence boundaries), and the idle timeout in milliseconds |
+| `tts.mlx.command` / `tts.mlx.script` / `tts.mlx.model` / `tts.mlx.refAudio` | venv python / bundled worker / Base 4-bit model / *(none)* | Local Qwen3-TTS Base clone engine: interpreter, worker, model directory and the x-vector reference WAV |
+| `tts.export.enabled` / `tts.export.dir` | `false` / `<home>/.dsh-talk/audio` | Write host-synthesized audio to a file and return `audioPath` |
+| `announce.enabled` | `true` | Speak the turn-end line when a turn was not auto-read |
+| `autoReply.enabled` / `autoReply.maxChars` | `true` / `600` | Automatic read-aloud of the final reply and its character cap |
+| `maxSpeakChars` | `20000` | Cap on one `speak` tool request |
 
-`stt.silenceFinaliseMs` and `record.vad.silenceMs` are separate mechanisms: the first finalises the Web Speech transcript when continuous recognition hears no speech, the second is the MediaRecorder energy-based detector that ends the recording (and submits it when `record.autoSubmit` is on). They run in different pipelines and share no state.
+## Host playback engine
 
-### Automatic reply read-aloud
+- **MiniMax** (`speech-2.8-turbo`): the synchronous T2A endpoint is called with
+  `stream: true`; hex MP3 chunks from the SSE stream are written straight into
+  one `ffplay` process's stdin. The first word starts in a few hundred
+  milliseconds and a long reply plays as one continuous stream. Requests longer
+  than `tts.minimax.chunkChars` are split at sentence boundaries while the same
+  player keeps playing.
+- **MLX** (offline): a resident Python worker keeps a quantized Qwen3-TTS
+  **Base** model warm and clones the `tts.mlx.refAudio` speaker with x-vector
+  only (no preset voice, no ICL reference transcript). Fragments are queued into
+  one continuous `sounddevice` output stream.
+- A new utterance only stops speech the **same session** already had in flight;
+  auto-read and announcements pass `interrupt: false`, so a long read finishes.
+- The composer button reads the newest assistant reply through the same
+  pipeline and stops it with `talk/stop`.
 
-By default (`autoReply.enabled: true`) the final assistant reply of a completed turn is read aloud through the same speak pipeline as the `speak` tool — same engine, voice, audio cache, and export rules. `autoReply.enabled: false` turns it off and leaves the announcement path exactly as before.
+## MiniMax setup
 
-- **Which turns**: only the `turn/end` reasons listed in `autoReply.reasons` — `completed` and `max-tokens` by default. Aborted, blocked, and error turns are not read and keep the old "Turn complete." announcement. Only the last committed `assistant/message` of that turn is used, so a tool-calling turn reads its final text rather than an interim step.
-- **What is read**: the reply's text blocks joined by newlines, with fenced code blocks and inline backticks stripped — code is never read as prose — then truncated at a whitespace boundary to `autoReply.maxChars` characters (default 600, 1..100000). A reply that is empty after stripping is not read at all.
-- **Announcement suppression**: for a turn whose reply is read, the generic "Turn complete." phrase is not spoken, so the two never talk over each other. A turn that was not handled (a non-listed end reason, a subagent/delegated session) still gets the announcement when `announce.onTurnEnd` is on.
-- **No double-reading**: `autoReply.skipIfToolSpoke: true` skips a turn that already called the `speak` tool, and one reply is deduplicated by assistant message id, so a repeated trigger never speaks it twice.
-- **Subagents**: `autoReply.skipSubagents: true` never reads sessions created by a subagent or team agent (`origin: subagent` or a non-zero delegation depth).
-- **Playback is serialized**: a new utterance stops and releases the previous audio player and cancels any in-flight browser `SpeechSynthesis`, so consecutive auto-read turns never overlap.
-- **Wire**: the utterance is logged with reason `auto-reply`, which the `talk:speech` projection and `talk/latest` carry, and it is exported like any other utterance when a local engine synthesizes it.
-- **Settings toggle**: the Settings → Plugins → Talk panel exposes the same switch as `autoReply.enabled`; saving appends it to the profile patch, so reload the profile to apply (the character cap and the two skip guards stay config-only).
-
-### Audio file export
-
-Every utterance synthesized by a local engine (`edge-tts`, `piper`, `macos`) is written to a file **in addition to** the in-memory cache the browser plays from. The browser engine synthesizes on the client and therefore exports nothing — that state is reported explicitly, never silently.
-
-- **Where**: `tts.export.dir`, default `<home>/.dsh-talk/audio` — the plugin's own directory. It is deliberately never the host's working directory, so a repository is never polluted; a relative `tts.export.dir` is resolved under the home directory for the same reason.
-- **Names**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) or `.wav` (piper/macos). The stamp is UTC so names sort chronologically, and the token comes from the utterance id, so a file maps back to its speech log entry (`dsh-talk/speech`, or `plugin:dsh-talk/speech` on `0.2.1+` hosts). The spoken text is never part of a file name.
-- **Cleanup**: bounded on every write, age first and count second. Files older than `tts.export.maxAgeMinutes` (default 1440 = 24 h) are removed, then the oldest files are removed until the directory holds at most `tts.export.maxFiles` (default 20, counting the file just written). Pruning only ever unlinks names matching this plugin's own `speech-…` pattern, so other files in a shared directory are never touched. With the defaults the directory holds at most 20 files (~a few MB) and nothing older than a day.
-- **Failure**: exporting is an addition to speech, never a precondition. If the directory cannot be created or written, the utterance still plays and the result reports `audioExport: "failed"` with the reason; pruning failures are ignored and retried on the next write.
-- **Model-visible path**: the `speak` tool's canonical value carries `audioPath` (plus `audioExport` and, when there is no file, `exportNote`), and the same path is in the rendered result text — so the agent can pass it straight to another tool that takes a file, for example a messenger plugin's file argument. Event announcements (turn end, approval, error) are synthesized through the same pipeline and are exported the same way; they are bounded by the same caps.
-- **Handing the file to another plugin**: a consumer that only accepts files inside its own workspace — `dsh-wechat`'s `send_wechat` refuses a `file_path` outside the calling session's workspace unless its own `allowAnyFilePath` setting is on — will reject a path under your home directory. For that flow, point `tts.export.dir` at a directory inside that workspace (for example `<workspace>/.dsh-talk-audio`); the default stays outside every repository on purpose.
-
-## Tools & surfaces
-
-| Surface | Kind | Notes |
-|---|---|---|
-| `speak` | tool | Speaks text aloud (browser/edge-tts/macos/piper); per-call engine/voice overrides; canonical JSON outcome |
-| mic button | `conversation.input.left` slot | Record → transcribe → fill draft (or submit); speak-to-interrupt on press |
-| settings tab | `settings.plugins.tab` (id `talk`) | Engine/language/announcement/auto-read switches; append-only save |
-| `talk:*` | Typert Remote | `status`, `audio`, `transcribe`, `applySettings`, `interrupt` (host namespace) |
-
-## Permissions & data
-
-- **Permissions**: the plugin keeps an in-memory, byte-capped audio cache for playback and, for local engines, writes the synthesized audio to its own bounded directory (`tts.export.*`, default `<home>/.dsh-talk/audio`, at most 20 files and 24 h old by default); microphone permission is browser-mediated. The settings tab only appends patch fragments to the profile with a timestamped backup — never rewrites the file.
-- **Data**: audio bytes never enter the model context or the session log. The `dsh-talk/speech` event carries the utterance id, engine, reason, size, sanitized text, and browser voice/rate/pitch when applicable; hosts whose session vocabulary knows that event type receive it directly, hosts on `0.2.1+` receive it as an experimental ignorable plugin record (`plugin:dsh-talk/speech` — see Host compatibility), and envelope-less hosts write nothing. The `speak` tool result carries the exported file's path (a persistent artifact in the plugin's own directory), and everything else on a display/log surface passes the redaction helpers, so credentials, JWTs, bearer headers, and temp paths stay out.
-- **Network**: only the engines you configure are contacted. `edge-tts` performs network synthesis, FunASR uses its configured endpoint, and Chrome's `webkitSpeechRecognition` sends microphone audio to Google's servers for transcription; browser `speechSynthesis` playback remains local.
-
-## Security boundaries
-
-- **Model-visible ⟺ logged** — the model sees only the speak tool's canonical value and render text. The `dsh-talk/speech` event — a plain session event where the host vocabulary knows it, an ignorable `plugin:dsh-talk/speech` record on `0.2.1+` hosts — is appended only when the host can carry it (see Host compatibility); the `tool/call` + `tool/result` events always remain the reconstructable trail.
-- **Approval announcements never block** — the `approval/request` listener always calls `next()`.
-- **Sanitized output** — credentials and temp audio paths never reach logs or displays. The one deliberate exception is the exported audio path in the speak result, which is a persistent file in the plugin's own directory (still passed through the secret redactor) and is meant to be handed to another tool.
-- **Host compatibility** — the `dsh-talk/speech` event is appended through a three-way gate. Hosts whose known-type vocabulary covers the event append it plainly and the call reports that it did; hosts that publish the experimental `appendPluginRecord` API (`0.2.1+`) append an ignorable plugin record named `plugin:dsh-talk/speech` (the plugin-record type grammar is `plugin:` followed by lowercase slash segments), which the `talk:speech` projection folds exactly like the plain event — this is what restores live client playback there; hosts with neither channel — every released line through `0.1.1-rc.2`, the `0.1.2-alpha` line, `0.1.2-rc.1`, and `0.1.6-alpha.2`, whose `Session.append` can stamp only the surface intent and not the `ignorable` envelope (that field is retained for stored-log read compatibility only) — get no append, so speech can never pollute the session log there. The skip is not silent any more: the host keeps per-session appended/skipped counters and `talk/latest(sessionId)` reads them back, the client's session-scoped playback list stays empty, and the speak tool results remain the reconstructable audit trail. The plugin-record channel needs a `0.2.1+` host.
-- **Fail loud** — invalid engines, out-of-range values, and engines configured without their required model/endpoint fail the mount.
-
-## Known limitations
-
-- **Browser support**: Web Speech and MediaRecorder are feature-detected; without them the mic button disables itself and host engines (FunASR/whisper.cpp) can still transcribe when configured.
-- **Local engines are your install**: `edge-tts`, `piper`, and `whisper.cpp` executables and models must be installed separately; the `macos` engine only needs the system `/usr/bin/say`.
-- **edge-tts fails with 403 (`WSServerHandshakeError`)** — an outdated edge-tts build is rejected by the service; upgrade to edge-tts ≥ 7.3.1 (a dedicated venv works) and point `tts.edgeTts.command` at its absolute path.
-- **Audio files need a local engine**: the browser voice synthesizes on the client, so `speak` returns no `audioPath` there (the result says so explicitly), and a local engine that fails and falls back to the browser also has no file. Exported files live in the plugin's own bounded directory — see Audio file export for the location, naming, and cleanup rules.
-- **Recording format**: the browser records with its native MediaRecorder codec; whisper.cpp may require a WAV-configured recorder or a server-side conversion for other formats.
-- **Settings apply on reload**: the settings tab appends to the profile patch; a profile reload (or web-app restart) activates the changes.
-- **Live playback history is empty only on envelope-less `0.1.x` hosts**: on `0.1.1-rc.2`, the `0.1.2-alpha` line, `0.1.2-rc.1`, and `0.1.6-alpha.2` the host vocabulary does not know `dsh-talk/speech` and the plugin-record channel is unavailable, so the gate writes nothing and the client's session-scoped playback list stays empty; `talk/latest(sessionId)` still answers with the newest utterance (including the reason `auto-reply`) and the skipped counter. On `0.2.1+` hosts the plugin-record channel restores live playback. Speech itself, the mic, the settings tab, and the tool are unaffected.
-- **Legacy logs written by dsh-talk ≤ 0.2.1 may need repair before cold load**: versions through `0.2.1` appended unmarked `dsh-talk/speech` events. On hosts `0.1.0-rc.7` and newer, a session whose log already contains them fails its next cold load with `SessionFormatUnsupportedError`. Repair: stop the host, back up the session's `.jsonl` log, add `"ignorable":true` as a top-level member of every JSON line whose `"type"` is `"dsh-talk/speech"` (for example, insert `"ignorable":true,` right after the opening `{`), then reopen the session. Nothing else changes and nothing is lost; new appends from this version never add unmarked events.
-
-## Development
+Put the API key in the environment used to start the harness, or leave it in
+the harness credential store (`refs:` in `~/.dsh/.credentials.yaml`):
 
 ```sh
-pnpm install        # node ^22.19 || >=24
-pnpm run typecheck  # tsc: src + tests against the local harness checkout
-pnpm run typecheck:ci  # tsc against the published 0.1.7-alpha.2 types (no paths)
-pnpm test           # vitest: 154 tests, 17 suites
-pnpm run build      # tsc declarations + tsdown bundles (lib/)
-pnpm run verify:self-contained  # dependency specs resolve from the registry
-pnpm run verify:artifacts       # built ESM faces + client ModuleLoader handshake
-pnpm pack           # the published tarball
+export MINIMAX_CN_API_KEY=...
 ```
 
-## Interoperability with other DSH plugins
+Common Mandarin voices: `Chinese (Mandarin)_Warm_Girl`, `female-yujie`,
+`Chinese (Mandarin)_Gentleman`, `Chinese (Mandarin)_News_Anchor`. Pricing is
+about ¥2 per 10,000 characters (one Chinese character counts as two). The
+spoken text leaves the machine and is billed per character.
 
-Verified against **DSH `0.2.0-rc.2`** (the runtime this README ships for) and the high-star plugin set surveyed on 2026-10-05.
+## MLX clone setup
 
-This plugin **does not interfere** with other plugins, including the widely installed high-star ones:
+1. Create a Python venv with `mlx-audio` at `~/.dsh-talk/mlx-tts-venv`.
+2. Download a Qwen3-TTS **Base** 4-bit MLX checkpoint to
+   `~/.dsh-talk/models/qwen3-tts-0.6b-base-4bit`.
+3. Create a short reference WAV (for example with
+   `say -v "Lilian (Premium)" -o ~/.dsh-talk/voices/lilian-ref.wav --file-format=WAVE --data-format=LEI16@24000 -f -`)
+   and point `tts.mlx.refAudio` at it.
 
-- **No tool-name collision.** Every tool is namespaced; no bare name owned by a shipped tool or another plugin is registered.
-- **No service-key collision.** It provides `talk`; that key is not a built-in seam and is not provided by any surveyed high-star plugin.
-- **No slot collision.** It registers no client slot key, so it cannot contend for a `shadows-shipped-ui` seat.
-- **No HTTP route collision.** It registers no `webServer` prefix.
-- **No patch-layer collision.** The bundle patch only `insert`s its own row; it never overrides a built-in row's `config`.
-- **No global mutation.** It does not patch prototypes, rewrite `process.env`, or replace the global fetch dispatcher.
+Then set `tts.engine: mlx` (or keep `minimax` and let
+`tts.fallback: true` fall back to MLX when the cloud call fails).
 
-**Shared event listeners are non-interfering by construction.** It observes the ordering-sensitive event `approval/request` with `ctx.on()` — Cordis's broadcast registration, where every listener runs and none can starve another. **Every listener here delegates through `next()`**, so the chain is never short-circuited, and a mutation is applied to the value `next()` produced rather than returned in its place:
+## Play button and settings
 
-Static evidence: `dsh-plugin-doctor` K10–K13 report `pass` for every check on this repository.
+The button in `conversation.input.left` shows ▶ when idle and ⏹ while speaking.
+Clicking it calls `talk/playLatest` with the current session id, or `talk/stop`
+when audio is playing. The settings tab offers the engine, the MiniMax voice id
+and the auto-reply switch; saving appends one row operation to the profile
+patch layer (reload to apply).
 
-## Topics
+## Troubleshooting
 
-`dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `voice`, `speech`, `tts`, `stt`, `speech-to-text`, `text-to-speech`, `microphone`
+- **No sound from MiniMax**: `ffplay` missing (`brew install ffmpeg`) or no API
+  key. The speak result carries the sanitized error; the session log records a
+  `plugin:dsh-talk/speech` event with `error`.
+- **Auth errors**: `minimax: 1004: invalid api key` means the key was not found
+  in the environment or the credential store.
+- **MLX worker slow to start**: the first request loads the model (a few
+  seconds); later requests reuse the warm worker.
+- **Long read cut off**: check the session log for `interrupted`, and remember
+  that a new utterance from the same session preempts the current one.
 
-## Contributors
+## Security and development
 
-- [@Mo-Mia](https://github.com/Mo-Mia) — Web Speech privacy/compatibility, composer input actions, language fallback, continuous dictation, `talk:speech` projection, and browser TTS design proposals (#2–#9); several informed the current settings surface.
-- [@PerryLink](https://github.com/PerryLink) — creator and maintainer: speak pipeline, speech engines, mic recorder, event announcements, projection unit, and the five-language docs.
-
-## PerryLink DSH Plugin Family
-
-This project is part of the DeepSeek Harness plugin family from [PerryLink](https://github.com/PerryLink). The roster stays collapsed below so every README keeps a short first screen; expand it to see every row and its status.
-
-<details>
-<summary>Expand all plugins</summary>
-
-| Plugin | Status |
-|---|---|
-| **[dsh-aqua-input-check](https://github.com/PerryLink/dsh-aqua-input-check)** |  |
-| **[dsh-archive-check](https://github.com/PerryLink/dsh-archive-check)** |  |
-| **[dsh-auto-review](https://github.com/PerryLink/dsh-auto-review)** |  |
-| **[dsh-autotier](https://github.com/PerryLink/dsh-autotier)** |  |
-| **[dsh-bid-ca-precheck](https://github.com/PerryLink/dsh-bid-ca-precheck)** |  |
-| **[dsh-bid-qual-check](https://github.com/PerryLink/dsh-bid-qual-check)** |  |
-| **[dsh-cert-mcp](https://github.com/PerryLink/dsh-cert-mcp)** |  |
-| **[dsh-checkpoint-rewind](https://github.com/PerryLink/dsh-checkpoint-rewind)** |  |
-| **[dsh-click](https://github.com/PerryLink/dsh-click)** |  |
-| **[dsh-composer-history](https://github.com/PerryLink/dsh-composer-history)** |  |
-| **[dsh-contract-stance](https://github.com/PerryLink/dsh-contract-stance)** |  |
-| **[dsh-customs-doc-check](https://github.com/PerryLink/dsh-customs-doc-check)** |  |
-| **[dsh-data-quality](https://github.com/PerryLink/dsh-data-quality)** |  |
-| **[dsh-demurrage-ledger](https://github.com/PerryLink/dsh-demurrage-ledger)** |  |
-| **[dsh-doublecheck](https://github.com/PerryLink/dsh-doublecheck)** |  |
-| **[dsh-drill-script-check](https://github.com/PerryLink/dsh-drill-script-check)** |  |
-| **[dsh-eia-guide-check](https://github.com/PerryLink/dsh-eia-guide-check)** |  |
-| **[dsh-emergency-plan](https://github.com/PerryLink/dsh-emergency-plan)** |  |
-| **[dsh-essay-rubric-check](https://github.com/PerryLink/dsh-essay-rubric-check)** |  |
-| **[dsh-evidence-check](https://github.com/PerryLink/dsh-evidence-check)** |  |
-| **[dsh-export-ctl-check](https://github.com/PerryLink/dsh-export-ctl-check)** |  |
-| **[dsh-fast](https://github.com/PerryLink/dsh-fast)** |  |
-| **[dsh-fmea-table-check](https://github.com/PerryLink/dsh-fmea-table-check)** |  |
-| **[dsh-forecast-penalty](https://github.com/PerryLink/dsh-forecast-penalty)** |  |
-| **[dsh-fund-research](https://github.com/PerryLink/dsh-fund-research)** |  |
-| **[dsh-github](https://github.com/PerryLink/dsh-github)** |  |
-| **[dsh-gongwen-flow-check](https://github.com/PerryLink/dsh-gongwen-flow-check)** |  |
-| **[dsh-gongwen-word-check](https://github.com/PerryLink/dsh-gongwen-word-check)** |  |
-| **[dsh-guard-plan-qc](https://github.com/PerryLink/dsh-guard-plan-qc)** |  |
-| **[dsh-hazchem-check](https://github.com/PerryLink/dsh-hazchem-check)** |  |
-| **[dsh-hazplan-check](https://github.com/PerryLink/dsh-hazplan-check)** |  |
-| **[dsh-hidden-risk-map](https://github.com/PerryLink/dsh-hidden-risk-map)** |  |
-| **[dsh-hs-classify](https://github.com/PerryLink/dsh-hs-classify)** |  |
-| **[dsh-icd-rule-check](https://github.com/PerryLink/dsh-icd-rule-check)** |  |
-| **[dsh-industry-research](https://github.com/PerryLink/dsh-industry-research)** |  |
-| **[dsh-lawcite-adapter](https://github.com/PerryLink/dsh-lawcite-adapter)** |  |
-| **[dsh-laya](https://github.com/PerryLink/dsh-laya)** |  |
-| **[dsh-lc-doc-check](https://github.com/PerryLink/dsh-lc-doc-check)** |  |
-| **[dsh-learning-gap-check](https://github.com/PerryLink/dsh-learning-gap-check)** |  |
-| **[dsh-library](https://github.com/PerryLink/dsh-library)** |  |
-| **[dsh-local-ai](https://github.com/PerryLink/dsh-local-ai)** |  |
-| **[dsh-lsp-actions](https://github.com/PerryLink/dsh-lsp-actions)** |  |
-| **[dsh-mask](https://github.com/PerryLink/dsh-mask)** |  |
-| **[dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel)** |  |
-| **[dsh-medrec-qc](https://github.com/PerryLink/dsh-medrec-qc)** |  |
-| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** |  |
-| **[dsh-nsfc-form-check](https://github.com/PerryLink/dsh-nsfc-form-check)** |  |
-| **[dsh-nurse-record-check](https://github.com/PerryLink/dsh-nurse-record-check)** |  |
-| **[dsh-observe](https://github.com/PerryLink/dsh-observe)** |  |
-| **[dsh-origin-rvc-check](https://github.com/PerryLink/dsh-origin-rvc-check)** |  |
-| **[dsh-ota-review-check](https://github.com/PerryLink/dsh-ota-review-check)** |  |
-| **[dsh-output-styles](https://github.com/PerryLink/dsh-output-styles)** |  |
-| **[dsh-paper-doc-adapter](https://github.com/PerryLink/dsh-paper-doc-adapter)** |  |
-| **[dsh-permission-rules](https://github.com/PerryLink/dsh-permission-rules)** |  |
-| **[dsh-permit-report-check](https://github.com/PerryLink/dsh-permit-report-check)** |  |
-| **[dsh-pipeline-check](https://github.com/PerryLink/dsh-pipeline-check)** |  |
-| **[dsh-pleading-draft](https://github.com/PerryLink/dsh-pleading-draft)** |  |
-| **[dsh-plugin-doctor](https://github.com/PerryLink/dsh-plugin-doctor)** |  |
-| **[dsh-plugin-guide](https://github.com/PerryLink/dsh-plugin-guide)** |  |
-| **[dsh-plugin-kit](https://github.com/PerryLink/dsh-plugin-kit)** |  |
-| **[dsh-plugin-upgrade](https://github.com/PerryLink/dsh-plugin-upgrade)** |  |
-| **[dsh-policy-brief-draft](https://github.com/PerryLink/dsh-policy-brief-draft)** |  |
-| **[dsh-power-loss-split](https://github.com/PerryLink/dsh-power-loss-split)** |  |
-| **[dsh-power-ticket-check](https://github.com/PerryLink/dsh-power-ticket-check)** |  |
-| **[dsh-ppap-check](https://github.com/PerryLink/dsh-ppap-check)** |  |
-| **[dsh-protest-deadline](https://github.com/PerryLink/dsh-protest-deadline)** |  |
-| **[dsh-railway-window](https://github.com/PerryLink/dsh-railway-window)** |  |
-| **[dsh-repair-order-qc](https://github.com/PerryLink/dsh-repair-order-qc)** |  |
-| **[dsh-research-report](https://github.com/PerryLink/dsh-research-report)** |  |
-| **[dsh-review-reply-check](https://github.com/PerryLink/dsh-review-reply-check)** |  |
-| **[dsh-rulefile-check](https://github.com/PerryLink/dsh-rulefile-check)** |  |
-| **[dsh-safety-brief-check](https://github.com/PerryLink/dsh-safety-brief-check)** |  |
-| **[dsh-score](https://github.com/PerryLink/dsh-score)** |  |
-| **[dsh-session-sync](https://github.com/PerryLink/dsh-session-sync)** |  |
-| **[dsh-site-log-check](https://github.com/PerryLink/dsh-site-log-check)** |  |
-| **[dsh-skill-pack-security](https://github.com/PerryLink/dsh-skill-pack-security)** |  |
-| **[dsh-soe-decision-check](https://github.com/PerryLink/dsh-soe-decision-check)** |  |
-| **[dsh-soilwater-check](https://github.com/PerryLink/dsh-soilwater-check)** |  |
-| **[dsh-sop-sync-check](https://github.com/PerryLink/dsh-sop-sync-check)** |  |
-| **[dsh-spc-gbt-adapter](https://github.com/PerryLink/dsh-spc-gbt-adapter)** |  |
-| **[dsh-talk](https://github.com/PerryLink/dsh-talk)** |  |
-| **[dsh-tender-extract](https://github.com/PerryLink/dsh-tender-extract)** |  |
-| **[dsh-tender-matrix](https://github.com/PerryLink/dsh-tender-matrix)** |  |
-| **[dsh-test-drive](https://github.com/PerryLink/dsh-test-drive)** |  |
-| **[dsh-ticktick](https://github.com/PerryLink/dsh-ticktick)** |  |
-| **[dsh-translate](https://github.com/PerryLink/dsh-translate)** |  |
-| **[dsh-warranty-calc](https://github.com/PerryLink/dsh-warranty-calc)** |  |
-| **[dsh-budget](https://github.com/PerryLink/dsh-budget)** | 🧊 FROZEN — see the repo README |
-| **[dsh-claude-move](https://github.com/PerryLink/dsh-claude-move)** | 🧊 FROZEN — see the repo README |
-| **[dsh-defend](https://github.com/PerryLink/dsh-defend)** | 🧊 FROZEN — see the repo README |
-| **[dsh-draw](https://github.com/PerryLink/dsh-draw)** | 🧊 FROZEN — see the repo README |
-| **[dsh-reach](https://github.com/PerryLink/dsh-reach)** | 🧊 FROZEN — see the repo README |
-| **[dsh-background-agents](https://github.com/PerryLink/dsh-background-agents)** | 🚫 RETIRED — see the repo README |
-| **[dsh-session-pin](https://github.com/PerryLink/dsh-session-pin)** | 🚫 RETIRED — see the repo README |
-| **[dsh-team-rooms](https://github.com/PerryLink/dsh-team-rooms)** | 🚫 RETIRED — see the repo README |
-
-</details>
+- The API key is resolved per utterance and never logged; error text is
+  sanitized before it reaches the session log or the tool result.
+- Every spoken utterance is recorded as a `plugin:dsh-talk/speech` session
+  event (text, engine, reason, byte count, error) — no audio bytes in the log.
+- Checks: `pnpm run typecheck && pnpm run typecheck:ci && pnpm test &&
+  pnpm run build && pnpm run verify:self-contained && pnpm run verify:artifacts
+  && pnpm run check:readmes && pnpm run check:lockfile`.
 
 ## License
 
-[Apache License 2.0](LICENSE) © 2026 dsh-talk contributors
+Apache-2.0.

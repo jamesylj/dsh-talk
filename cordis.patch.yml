@@ -1,4 +1,4 @@
-# dsh-talk bundle patch: mount the voice-first session loop.
+# dsh-talk bundle patch: mount host-played text-to-speech.
 #
 # Every key below is a Config field (Schemastery schema); invalid values fail
 # the profile load loudly. See README.md "Configuration" for the full table.
@@ -6,128 +6,18 @@
     - id: talk
       name: dsh-talk
       config:
-        # Composer microphone button behavior.
-        record:
-          # Show the mic button and allow recording.
-          enabled: true
-          # Optional toggle hotkey such as "alt+r"; unset = click only.
-          hotkey: null
-          # Recording cap in seconds (1..600).
-          maxSeconds: 60
-          # Submit the transcription as the user message (false = fill the draft).
-          autoSubmit: false
-          # Voice-activity detection: silence auto-ends the recording.
-          vad:
-            # Detect silence and auto-end (degrades when AudioContext is absent).
-            enabled: true
-            # Consecutive silence in milliseconds before auto-end (200..10000).
-            silenceMs: 1500
-            # RMS energy floor (0..1) above which audio counts as speech.
-            energyThreshold: 0.01
-        # Speech-to-text.
-        stt:
-          # auto | web | funasr | whisper — auto prefers a configured local
-          # engine, then the browser's Web Speech.
-          engine: auto
-          # BCP-47 language such as "en-US", or "auto".
-          language: auto
-          # Show interim transcriptions (Web Speech only).
-          interim: true
-          # Stop continuous Web Speech after this many milliseconds without speech (500..15000).
-          silenceFinaliseMs: 4000
-          # FunASR HTTP inference server (used when engine resolves to funasr).
-          funasr:
-            # Full inference endpoint URL; required for the funasr engine.
-            url: ''
-            # Model name sent to the server; unset = server default.
-            model: ''
-          # whisper.cpp local engine (used when engine resolves to whisper).
-          whisper:
-            # whisper.cpp executable.
-            command: whisper-cli
-            # Model file path; required for the whisper engine.
-            modelPath: ''
-            # Language override; unset = the global stt.language or auto-detect.
-            language: ''
-        # Text-to-speech.
         tts:
-          # auto | browser | edge-tts | macos | minimax | mlx | piper — auto
-          # prefers piper (configured model), then edge-tts, then the browser
-          # voice. `macos` uses the system voice through /usr/bin/say (local,
-          # offline, macOS hosts only); `minimax` streams MiniMax
-          # speech-2.8-turbo from the cloud (API key required); `mlx` runs a
-          # quantized Qwen3-TTS model locally on Apple Silicon and streams
-          # chunk-by-chunk through the system player.
-          engine: auto
-          # Voice name override; unset = engine default.
-          voice: ''
-          # Rate offset in percent (-50..50) for edge-tts/piper/macos.
-          rate: 0
-          # Fall back to the browser voice when a local engine fails.
-          fallbackToBrowser: true
-          browser:
-            # Preferred SpeechSynthesis voice name; unset = platform default.
-            voiceName: ''
-            # SpeechSynthesis rate 0.1..10.
-            rate: 1
-            # SpeechSynthesis pitch 0..2.
-            pitch: 1
-          edgeTts:
-            # edge-tts executable.
-            command: edge-tts
-            # Azure neural voice name.
-            voice: en-US-JennyNeural
-          piper:
-            # piper executable.
-            command: piper
-            # piper voice model file; required for the piper engine.
-            modelPath: ''
-          macos:
-            # macOS `say` executable. The macos engine synthesizes locally and
-            # offline; an unknown voice name is rejected instead of silently
-            # falling back to the system default voice.
-            command: /usr/bin/say
-            # Installed voice name exactly as `say -v '?'` lists it.
-            voice: "Eddy (中文（中国大陆）)"
-            # Baseline words per minute; `rate` above scales it as a percent.
-            rate: 175
-          mlx:
-            # Local MLX inference engine (Apple Silicon). Requires a Python
-            # venv with mlx-audio plus a quantized Qwen3-TTS model directory.
-            # Defaults when empty: ~/.dsh-talk/mlx-tts-venv/bin/python and
-            # ~/.dsh-talk/models/qwen3-tts-0.6b-4bit.
-            command: ''
-            # Worker script; empty = the bundled worker/mlx_tts.py.
-            script: ''
-            # Model directory or HF repo id (4-bit MLX build recommended).
-            model: ''
-            # Qwen3-TTS CustomVoice speaker.
-            voice: Vivian
-            # Language argument (`Chinese`, `English`, ...).
-            language: Chinese
-            # Sentence chunk size: smaller = faster first audio, more calls.
-            chunkChars: 100
-            # System player used to play each chunk while synthesizing.
-            player: /usr/bin/afplay
-            # Sampling: lower temperature/top-p keep the voice stable and avoid
-            # occasional dialect/language drift; markdown tables/links are
-            # stripped before synthesis.
-            temperature: 0.6
-            topP: 0.9
-            topK: 30
-            # custom = preset CustomVoice speaker; clone = clone refAudio voice
-            # (requires a Base model and a reference WAV).
-            mode: custom
-            refAudio: ''
-            refText: ''
-            cloneMode: xvector
+          # minimax | mlx. MiniMax is the cloud engine (speech-2.8-turbo);
+          # MLX is the offline Qwen3-TTS Base clone engine.
+          engine: minimax
+          # When MiniMax fails for a non-abort reason, retry with MLX if a
+          # reference WAV is configured below.
+          fallback: true
           minimax:
-            # MiniMax cloud TTS (synchronous T2A). The API key resolves per
-            # utterance: this explicit value, then $apiKeyEnv, then the harness
-            # credential store's refs section. Never logged.
-            apiKey: ''
+            # API key resolution: this environment variable first, then the
+            # harness credential store's refs section. Never logged.
             apiKeyEnv: MINIMAX_CN_API_KEY
-            # Harness credential store read as the last fallback; empty = don't read a file.
+            # Harness credential store fallback; empty = do not read a file.
             credentialsFile: ~/.dsh/.credentials.yaml
             # Synchronous T2A endpoint (api-bj.minimaxi.com is lower latency in
             # northern China).
@@ -137,70 +27,38 @@
             # System voice id, e.g. "Chinese (Mandarin)_Warm_Girl",
             # "female-yujie", "Chinese (Mandarin)_Gentleman".
             voiceId: Chinese (Mandarin)_Warm_Girl
-            # happy | sad | angry | fearful | disgusted | surprised | neutral; empty = model default.
-            emotion: ''
-            # Language boost; "Chinese" for Mandarin text.
-            languageBoost: Chinese
-            # Player that reads the SSE MP3 stream from stdin (needs ffmpeg).
+            # Streaming player that reads the SSE MP3 from stdin (ffmpeg's ffplay).
             player: ffplay
-            # true = stream while synthesizing; false = buffer the whole reply and play it with afplay.
-            streaming: true
-            # Output sample rate in Hz (8000..48000).
-            sampleRate: 32000
-            # Characters per API request; longer text splits at sentence boundaries (500..10000).
-            batchChars: 2000
-            # Idle timeout in milliseconds: no network read or player write for this long fails the utterance (5000..600000).
+            # Characters per API request; longer text splits at sentence boundaries.
+            chunkChars: 2000
+            # Idle timeout: no network read or player write for this long fails
+            # the utterance (5000..600000).
             requestTimeoutMs: 120000
-          # Exported audio files: every locally synthesized utterance is also
-          # written to a file whose absolute path the speak tool returns as
-          # audioPath (hand it to another tool's file argument). The browser
-          # engine has no host bytes, so it reports "unsupported" instead.
+          mlx:
+            # Local Qwen3-TTS Base engine with x-vector clone only. Defaults when
+            # empty: ~/.dsh-talk/mlx-tts-venv/bin/python,
+            # ~/.dsh-talk/models/qwen3-tts-0.6b-base-4bit.
+            command: ''
+            # Worker script; empty = the bundled worker/mlx_tts.py.
+            script: ''
+            model: ''
+            # x-vector reference WAV (required for the mlx engine and for the
+            # MiniMax → MLX fallback).
+            refAudio: ''
           export:
-            # Write locally synthesized audio to a file.
-            enabled: true
-            # Target directory; empty = "<home>/.dsh-talk/audio". "~" expands to
-            # home; a relative path resolves under home, never the workspace.
+            # Write host-synthesized audio to a file and return its path as
+            # audioPath (off by default).
+            enabled: false
+            # Empty = "<home>/.dsh-talk/audio"; "~" expands to home; a relative
+            # path resolves under home, never the workspace.
             dir: ''
-            # Files retained in the directory, counting the one just written (1..1000).
-            maxFiles: 20
-            # Files older than this many minutes are pruned on the next write (1..10080).
-            maxAgeMinutes: 1440
-        # Event announcements.
+        # Speak "Turn complete." when a turn was not auto-read and nothing plays.
         announce:
-          # Master switch for all event announcements.
           enabled: true
-          # Announce turn completion.
-          onTurnEnd: true
-          # Announce pending approvals.
-          onApproval: true
-          # Announce errors.
-          onError: true
-          # Spoken phrases.
-          messages:
-            turnEnd: Turn complete.
-            approval: Approval required.
-            error: Something went wrong.
-        # Default auto-read: speak the assistant's final reply when a turn ends
-        # (the generic turn-end announcement is then suppressed — the reply IS
-        # the notification; error/aborted/blocked turns still fall back to it).
+        # Automatic read-aloud of the assistant's final reply.
         autoReply:
-          # Read the assistant's final reply aloud (default true).
           enabled: true
-          # Cap on one spoken reply in characters (1..100000); longer replies
-          # truncate at a word boundary (default 600).
+          # Cap on one spoken reply in characters (1..100000).
           maxChars: 600
-          # Skip auto-read when the same turn already called the speak tool,
-          # so one reply is never read twice (default true).
-          skipIfToolSpoke: true
-          # Never auto-read subagent/delegated sessions (default true).
-          skipSubagents: true
-          # Turn-end reasons that trigger auto-read: completed | max-tokens.
-          reasons:
-            - completed
-            - max-tokens
-        # Starting to talk interrupts current playback.
-        interrupt: true
         # Cap on the speak tool's text length in characters (1..100000).
         maxSpeakChars: 20000
-        # In-memory synthesized-audio cache cap in bytes (1048576..67108864).
-        maxAudioCacheBytes: 8388608

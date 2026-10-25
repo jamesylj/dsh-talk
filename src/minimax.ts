@@ -16,13 +16,12 @@
  * @module dsh-talk/minimax
  */
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { Writable } from 'node:stream'
 import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type { ResolvedConfig } from './config.ts'
-import { EngineFailure, runCommand } from './engine.ts'
+import { EngineFailure } from './engine.ts'
 import { sanitizeText } from './sanitize.ts'
 
 /** Safety cap on one utterance's accumulated MP3 bytes (64 MiB ≈ 68 min at 128 kbps). */
@@ -34,14 +33,14 @@ const MINIMAX_MAX_SSE_LINE = 96 * 1024 * 1024
 /** Preferred cut points when one request would exceed the API text limit. */
 const BATCH_BOUNDARY = /[。！？!?；;…\n]/u
 
-/** Emotions `speech-2.8-*` accepts in `voice_setting.emotion`. */
-export const MINIMAX_EMOTIONS = ['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'neutral'] as const
+/** Fixed output format of the streaming API (MP3 in, MP3 out). */
+const MINIMAX_SAMPLE_RATE = 32_000
+
+/** Fixed language boost for the Mandarin voices this engine ships with. */
+const MINIMAX_LANGUAGE_BOOST = 'Chinese'
 
 /** CLI shape of `ffplay` reading MP3 from stdin on the default audio device. */
 const FFPLAY_ARGS = ['-hide_banner', '-loglevel', 'error', '-nodisp', '-autoexit', '-'] as const
-
-/** System player used by the buffered (non-streaming) path. */
-const BUFFERED_PLAYER = '/usr/bin/afplay'
 
 /** Outcome of one MiniMax synthesis. */
 export interface MinimaxSynthResult {
@@ -118,25 +117,23 @@ export function minimaxRequestBody(
   voiceId: string,
   stream: boolean,
 ): Record<string, unknown> {
-  const speed = Math.min(2, Math.max(0.5, 1 + resolved.ttsRate / 100))
   return {
     model: resolved.minimaxModel,
     text,
     stream,
     voice_setting: {
       voice_id: voiceId,
-      speed,
+      speed: 1,
       vol: 1,
       pitch: 0,
-      ...(resolved.minimaxEmotion === null ? {} : { emotion: resolved.minimaxEmotion }),
     },
     audio_setting: {
-      sample_rate: resolved.minimaxSampleRate,
+      sample_rate: MINIMAX_SAMPLE_RATE,
       bitrate: 128_000,
       format: 'mp3',
       channel: 1,
     },
-    language_boost: resolved.minimaxLanguageBoost,
+    language_boost: MINIMAX_LANGUAGE_BOOST,
     // Basic rule-based normalization reads numbers/dates better; the `quality`
     // mode is non-streaming only, so `basic` is the correct streaming choice.
     text_normalization_mode: 'basic',
@@ -222,7 +219,6 @@ export function parseCredentialRefs(yaml: string): Record<string, string> {
  * @returns the key, or null when nothing is configured.
  */
 export async function resolveMinimaxApiKey(resolved: ResolvedConfig): Promise<string | null> {
-  if (resolved.minimaxApiKey !== null) return resolved.minimaxApiKey
   const envValue = process.env[resolved.minimaxApiKeyEnv]
   if (typeof envValue === 'string' && envValue.trim() !== '') return envValue.trim()
   const file = resolved.minimaxCredentialsFile
@@ -288,7 +284,7 @@ export class MinimaxEngine {
    * @param signal - caller abort signal (interruption).
    * @returns the complete MP3 bytes and its duration.
    */
-  async synthesize(text: string, voiceOverride: string | undefined, signal: AbortSignal): Promise<MinimaxSynthResult> {
+  async synthesize(text: string, signal: AbortSignal): Promise<MinimaxSynthResult> {
     if (signal.aborted) throw new EngineFailure('minimax: interrupted before synthesis', true)
     const apiKey = await resolveMinimaxApiKey(this.resolved)
     if (apiKey === null) {
@@ -297,8 +293,8 @@ export class MinimaxEngine {
         false,
       )
     }
-    const voiceId = voiceOverride ?? this.resolved.ttsVoice ?? this.resolved.minimaxVoiceId
-    const batches = splitMinimaxText(text, this.resolved.minimaxBatchChars)
+    const voiceId = this.resolved.minimaxVoiceId
+    const batches = splitMinimaxText(text, this.resolved.minimaxChunkChars)
     if (batches.length === 0) throw new EngineFailure('minimax: text is empty', false)
     const pieces: Uint8Array[] = []
     let total = 0
@@ -311,15 +307,7 @@ export class MinimaxEngine {
       pieces.push(chunk)
     }
 
-    if (this.resolved.minimaxStreaming) {
-      audioSec = await this.streamToPlayer(batches, voiceId, apiKey, signal, onAudio)
-    } else {
-      for (const batch of batches) {
-        if (signal.aborted) throw new EngineFailure('minimax: interrupted', true)
-        audioSec += await this.collectBatch(batch, voiceId, apiKey, signal, onAudio)
-      }
-      await this.playBuffered(this.concat(pieces), signal)
-    }
+    audioSec = await this.streamToPlayer(batches, voiceId, apiKey, signal, onAudio)
 
     const data = this.concat(pieces)
     return {
@@ -541,19 +529,4 @@ export class MinimaxEngine {
     return seconds
   }
 
-  /** Play the complete buffered MP3 through the system player. */
-  private async playBuffered(data: Uint8Array, signal: AbortSignal): Promise<void> {
-    if (signal.aborted) throw this.interruption(signal)
-    const dir = await mkdtemp(join(tmpdir(), 'dsh-talk-minimax-'))
-    try {
-      const file = join(dir, 'speech.mp3')
-      await writeFile(file, data)
-      const { exitCode, stderr } = await runCommand(this.subprocess, [BUFFERED_PLAYER, file], '', signal)
-      if (exitCode !== 0) {
-        throw this.failure(`${BUFFERED_PLAYER} exited ${String(exitCode)}: ${stderr}`, signal)
-      }
-    } finally {
-      await rm(dir, { recursive: true, force: true }).catch(() => {})
-    }
-  }
 }

@@ -26,7 +26,6 @@ import {
   type SubprocessSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SPEECH_EVENT } from '../src/speech.ts'
 import type { TalkService } from '../src/service.ts'
 
@@ -264,11 +263,6 @@ export async function mountHarness(config: Record<string, unknown> = {}): Promis
   session.append('turn/start', { turn: 1 })
   ctx.provide('systemPrompt', { tools: () => () => undefined, section: () => () => undefined } as never)
   await ctx.plugin(ToolRuntime)
-  // Direct construction binds the registry's own `session/event` listener to
-  // THIS context; `ctx.plugin()` would mount it on a child scope whose
-  // listener never sees root-emitted session events (production resolves the
-  // service at composition level).
-  new SessionProjectionRegistry(ctx)
   // `SubprocessRuntime` is a Cordis Service: construction self-registers.
   new FakeSubprocessRuntime(ctx)
 

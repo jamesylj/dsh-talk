@@ -1,41 +1,44 @@
 /**
- * The speech session-log seat. Every utterance the plugin speaks aloud — tool
- * speech, turn-end/approval/error announcements, and the automatic reading of
- * the assistant's final reply — is appended to the session log and the
- * `talk:speech` projection over it drives live playback in the client. The
- * payload carries the utterance id, engine, reason, size, and spoken text, so
- * the voice loop is reconstructable from the session log; the audio bytes
- * themselves stay out of the log and travel only through the `talk/audio`
- * Remote endpoint.
+ * Speech session-log seat. Every utterance this plugin speaks aloud — the
+ * `speak` tool, the automatic reply read-aloud, the manual play button and the
+ * turn-end announcement — is appended to the session log so the voice loop is
+ * reconstructable (`plugin:dsh-talk/speech` records on current hosts; the
+ * legacy plain `dsh-talk/speech` event on hosts whose vocabulary knows it).
  *
- * Two channels exist because the host vocabulary is not ours to extend:
- * - hosts whose `KNOWN_SESSION_EVENT_TYPES` covers `dsh-talk/speech` (the
- *   legacy contract this plugin was built against) append it plainly;
- * - hosts that instead expose the experimental `appendPluginRecord` API
- *   (0.2.1+) receive an ignorable `plugin:dsh-talk/speech` record. The record
- *   type is outside the released event vocabulary by construction, the marker
- *   makes a cold load keep-and-skip it, and the record never enters the
- *   model-visible surface;
- * - any other host gets no append and the call reports `false`, so the caller
- *   records the degradation (`talk/latest` exposes the per-session counters)
- *   while the `speak` tool results remain the reconstructable audit trail.
- *
- * HARD RULE (measured on the 0.1.6-alpha.2 line): `Session.append`'s third
- * parameter carries a `SurfaceIntent`, and only for surface-eligible event
- * types; it is never an `ignorable` envelope. An out-of-repo non-surface type
- * therefore cannot be stamped through `append`, and an unmarked unknown event
- * makes a later reader refuse the whole stored log — so the source-text probe
- * that used to look for an `ignorable` option was removed and must not come
- * back in any form (least of all as an unconditional append).
+ * Audio bytes never enter the log: the host played the audio itself, and the
+ * optional export file path rides the speak outcome instead.
  *
  * @module dsh-talk/speech
  */
 
 import * as sessionPkg from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type { DshTalkSpeechEvent } from './vocabulary.ts'
 
-export type { DshTalkSpeechEvent, SpeechReason, SpeechTtsEngine } from './vocabulary.ts'
+/** What triggered one spoken utterance. */
+export type SpeechReason = 'speak-tool' | 'turn-end' | 'auto-reply' | 'manual'
+
+/** Engines that can synthesize speech in this plugin. */
+export type SpeechTtsEngine = 'minimax' | 'mlx'
+
+/** Payload of one speech session event. */
+export interface DshTalkSpeechEvent {
+  /** Always `tts` — a host-synthesized utterance. */
+  kind: 'tts'
+  /** Stable id of the utterance. */
+  utteranceId: string
+  /** Engine that produced the audio. */
+  engine: SpeechTtsEngine
+  /** The spoken text, sanitized and capped. */
+  text: string
+  /** Synthesized audio size in bytes. */
+  audioBytes: number
+  /** What triggered the utterance. */
+  reason: SpeechReason
+  /** Sanitized failure note; absent on success. */
+  error?: string
+  /** True when the utterance was interrupted. */
+  interrupted?: true
+}
 
 /** The plain speech session event type (legacy host vocabulary). */
 export const SPEECH_EVENT = 'dsh-talk/speech' as const
@@ -70,39 +73,17 @@ function pluginRecordAppender(): PluginRecordAppender | undefined {
  *
  * @param session - the calling session.
  * @param data - the speech event payload.
- * @returns `true` when the utterance reached the log (plain event or plugin
- *   record), `false` when this host can carry neither (the caller records the
- *   skip so the degradation stays observable).
+ * @returns `true` when the utterance reached the log, `false` when this host
+ *   can carry neither channel.
  */
 export function appendSpeechEvent(session: Session, data: DshTalkSpeechEvent): boolean {
   const knownTypes = (sessionPkg as Record<string, unknown>)['KNOWN_SESSION_EVENT_TYPES'] as ReadonlySet<string> | undefined
-  return appendSpeechEventWith(session, data, { knownTypes, appendRecord: pluginRecordAppender() })
-}
-
-/** Host capabilities one speech append may use; every field is feature-detected. */
-export interface SpeechHostChannels {
-  /** The host's known-event vocabulary, when it publishes one. */
-  readonly knownTypes?: ReadonlySet<string> | undefined
-  /** The host's experimental plugin-record appender, when it publishes one. */
-  readonly appendRecord?: PluginRecordAppender | undefined
-}
-
-/**
- * Channel selection without touching the host module: used by
- * {@link appendSpeechEvent} with the detected host and directly by tests that
- * need to stand in for a host with different capabilities.
- *
- * @param session - the target session.
- * @param data - the speech event payload.
- * @param host - detected (or injected) host channels.
- * @returns whether the utterance reached the log.
- */
-export function appendSpeechEventWith(session: Session, data: DshTalkSpeechEvent, host: SpeechHostChannels): boolean {
-  if (host.knownTypes?.has(SPEECH_EVENT) === true) {
+  if (knownTypes?.has(SPEECH_EVENT) === true) {
     session.append(SPEECH_EVENT, data)
     return true
   }
-  if (host.appendRecord === undefined) return false
-  host.appendRecord(session, SPEECH_RECORD, data)
+  const appendRecord = pluginRecordAppender()
+  if (appendRecord === undefined) return false
+  appendRecord(session, SPEECH_RECORD, data)
   return true
 }

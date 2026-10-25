@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Resident MLX TTS worker for dsh-talk.
+"""Resident MLX TTS worker for dsh-talk (v0.5, x-vector clone only).
 
 One process, one model load, JSON-lines protocol on stdin/stdout:
 
   <- {"type":"ready"}                      (after the model is loaded)
-  -> {"id":"...","text":"...","voice":"Vivian","chunkChars":100,"outDir":"/tmp/x"}
+  -> {"id":"...","text":"...","chunkChars":100,"outDir":"/tmp/x"}
   <- {"type":"accepted"|"chunk"|"done"|"error"|"cancelled", ...}
   -> {"type":"cancel","id":"..."}           (stops the active request, keeps the model warm)
 
-Synthesis streams through the model (`stream=True`); every generated fragment is
-queued into ONE continuous sounddevice output stream, so sentences never
-overlap and there are no per-chunk player gaps. When PortAudio is unavailable
-the worker falls back to one blocking playback of the finished WAV, still with
-no overlap. The concatenated 24 kHz mono WAV is written to outDir/<id>.wav.
+The model is a Qwen3-TTS **Base** checkpoint; every chunk is generated with
+`ref_audio` only (x-vector speaker embedding, no reference transcript, no
+preset speaker). Synthesis streams through the model (`stream=True`); every
+generated fragment is queued into ONE continuous sounddevice output stream, so
+sentences never overlap and there are no per-chunk player gaps. When PortAudio
+is unavailable the worker falls back to one blocking afplay of the finished
+WAV, still without overlap. The concatenated 24 kHz mono WAV is written to
+outDir/<id>.wav.
 """
 import argparse
 import json
@@ -27,6 +30,10 @@ import time
 
 import numpy as np
 import soundfile as sf
+
+SAMPLE_RATE = 24000
+LANGUAGE = "Chinese"
+AFPLAY = "/usr/bin/afplay"
 
 
 def emit(payload: dict) -> None:
@@ -78,8 +85,7 @@ def split_text(text: str, max_chars: int) -> list[str]:
 class StreamPlayer:
     """One continuous output stream; enqueue() appends, silence fills underruns."""
 
-    def __init__(self, sample_rate: int = 24000, buffer_seconds: float = 1.5) -> None:
-        self.sample_rate = sample_rate
+    def __init__(self, buffer_seconds: float = 1.5) -> None:
         self.buffer_seconds = buffer_seconds
         self.buffer: list[np.ndarray] = []
         self.lock = threading.Lock()
@@ -109,7 +115,7 @@ class StreamPlayer:
         import sounddevice as sd
 
         self.stream = sd.OutputStream(
-            samplerate=self.sample_rate,
+            samplerate=SAMPLE_RATE,
             channels=1,
             callback=self._callback,
             blocksize=2048,
@@ -125,7 +131,7 @@ class StreamPlayer:
             self.buffer.append(array)
             self.total_queued += array.size
             buffered = sum(len(item) for item in self.buffer)
-        if not self.started and buffered >= int(self.buffer_seconds * self.sample_rate):
+        if not self.started and buffered >= int(self.buffer_seconds * SAMPLE_RATE):
             self._start()
 
     def wait_drained(self) -> None:
@@ -151,26 +157,16 @@ class StreamPlayer:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
-    parser.add_argument("--voice", default="Vivian")
-    parser.add_argument("--lang", default="Chinese")
+    parser.add_argument("--ref-audio", required=True)
     parser.add_argument("--chunk-chars", type=int, default=100)
     parser.add_argument("--buffer-seconds", type=float, default=1.5)
-    parser.add_argument("--player", default="/usr/bin/afplay")
-    parser.add_argument("--temperature", type=float, default=0.6)
+    parser.add_argument("--temperature", type=float, default=0.4)
     parser.add_argument("--top-p", type=float, default=0.9)
     parser.add_argument("--top-k", type=int, default=30)
-    parser.add_argument("--mode", choices=["custom", "clone"], default="custom")
-    parser.add_argument("--ref-audio", default="")
-    parser.add_argument("--ref-text", default="")
-    parser.add_argument("--clone-mode", choices=["xvector", "icl"], default="xvector")
     args = parser.parse_args()
-    if args.mode == "clone":
-        if args.ref_audio == "" or not os.path.exists(args.ref_audio):
-            sys.stderr.write(f"mlx_tts: clone mode needs an existing --ref-audio (got {args.ref_audio!r})\n")
-            return 2
-        if args.clone_mode == "icl" and args.ref_text.strip() == "":
-            sys.stderr.write("mlx_tts: cloneMode=icl needs --ref-text\n")
-            return 2
+    if args.ref_audio == "" or not os.path.exists(args.ref_audio):
+        sys.stderr.write(f"mlx_tts: x-vector clone needs an existing --ref-audio (got {args.ref_audio!r})\n")
+        return 2
 
     from mlx_audio.tts.utils import load_model
 
@@ -213,7 +209,6 @@ def main() -> int:
         request = requests.get()
         request_id = str(request.get("id", ""))
         text = normalize_for_speech(str(request.get("text", "")))
-        voice = str(request.get("voice") or args.voice)
         chunk_chars = int(request.get("chunkChars") or args.chunk_chars)
         out_dir = str(request.get("outDir") or "")
         with lock:
@@ -236,29 +231,17 @@ def main() -> int:
             for index, chunk in enumerate(chunks):
                 if state["cancel"].is_set():
                     break
-                if args.mode == "clone":
-                    generate = model.generate(
-                        text=chunk,
-                        language=args.lang,
-                        temperature=args.temperature,
-                        top_p=args.top_p,
-                        top_k=args.top_k,
-                        stream=True,
-                        streaming_interval=0.32,
-                        ref_audio=args.ref_audio,
-                        **({"ref_text": args.ref_text} if args.clone_mode == "icl" else {}),
-                    )
-                else:
-                    generate = model.generate_custom_voice(
-                        text=chunk,
-                        speaker=voice,
-                        language=args.lang,
-                        temperature=args.temperature,
-                        top_p=args.top_p,
-                        top_k=args.top_k,
-                        stream=True,
-                        streaming_interval=0.32,
-                    )
+                # Base model + x-vector clone: ref_audio only, no ref_text.
+                generate = model.generate(
+                    text=chunk,
+                    language=LANGUAGE,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    top_k=args.top_k,
+                    stream=True,
+                    streaming_interval=0.32,
+                    ref_audio=args.ref_audio,
+                )
                 for result in generate:
                     if state["cancel"].is_set():
                         break
@@ -277,12 +260,7 @@ def main() -> int:
                             emit({"type": "warning", "id": request_id, "message": f"audio device unavailable: {error}"})
                 if state["cancel"].is_set():
                     break
-                emit({
-                    "type": "chunk",
-                    "id": request_id,
-                    "index": index,
-                    "chars": len(chunk),
-                })
+                emit({"type": "chunk", "id": request_id, "index": index, "chars": len(chunk)})
             if state["cancel"].is_set():
                 player.stop()
                 emit({"type": "cancelled", "id": request_id})
@@ -290,20 +268,18 @@ def main() -> int:
             full = np.concatenate(pieces) if pieces else np.array([], dtype=np.float32)
             os.makedirs(out_dir, exist_ok=True)
             out_path = os.path.join(out_dir, f"{request_id}.wav")
-            sf.write(out_path, full, 24000, subtype="PCM_16")
+            sf.write(out_path, full, SAMPLE_RATE, subtype="PCM_16")
             if player_ok and player.started:
                 player.wait_drained()
                 player.stop()
-            elif player_ok:
-                player.stop()
-                subprocess.run([args.player, out_path], check=False)
             else:
-                subprocess.run([args.player, out_path], check=False)
+                player.stop()
+                subprocess.run([AFPLAY, out_path], check=False)
             emit({
                 "type": "done",
                 "id": request_id,
                 "file": out_path,
-                "audioSec": round(len(full) / 24000, 2),
+                "audioSec": round(len(full) / SAMPLE_RATE, 2),
                 "firstAudioSec": round(first_audio, 2) if first_audio is not None else None,
                 "synthSec": round(time.time() - started, 2),
             })

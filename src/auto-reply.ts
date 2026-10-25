@@ -24,7 +24,9 @@
  */
 
 import type { Session, SessionEvent, SessionEventType } from '@deepseek-ai/dsh-session'
-import type { AutoReplyReason } from './config.ts'
+
+/** Turn-end reasons that can trigger auto-read of the assistant's final reply. */
+export type AutoReplyReason = 'completed' | 'max-tokens'
 
 /** The registered `speak` tool name: a call in the turn means the turn spoke already. */
 export const SPEAK_TOOL_NAME = 'speak'
@@ -277,6 +279,26 @@ export function findAutoReply(events: readonly SessionEvent[], policy: AutoReply
   const text = prepareAutoReplyText(reply.data.message.content, policy.maxChars)
   if (text === '') return null
   return { turn, messageId: String(reply.data.message.id), text }
+}
+
+/**
+ * The newest assistant message text of a session, regardless of how the turn
+ * ended. This is the manual play button's selector: it reads the last reply
+ * even when auto-reply skipped it (speak tool used, auto-reply disabled, or a
+ * non-qualifying turn end).
+ *
+ * @param events - `session.snapshotEvents()`.
+ * @param maxChars - positive character cap.
+ * @returns the prepared text, or null when the session has no speakable reply.
+ */
+export function findLatestAssistantText(events: readonly SessionEvent[], maxChars: number): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event === undefined || !isEventOfType(event, 'assistant/message')) continue
+    const text = prepareAutoReplyText(event.data.message.content, maxChars)
+    if (text !== '') return text
+  }
+  return null
 }
 
 /**

@@ -81,14 +81,13 @@ export class MlxEngine {
    * Synthesize one utterance through the resident worker.
    *
    * @param text - text to speak (sanitized by the caller).
-   * @param voice - per-call voice override, or undefined for the configured one.
    * @param signal - abort signal; firing it cancels this request (worker stays warm).
    * @returns the concatenated WAV plus worker timing facts.
    */
-  synthesize(text: string, voice: string | undefined, signal: AbortSignal): Promise<MlxSynthResult> {
+  synthesize(text: string, signal: AbortSignal): Promise<MlxSynthResult> {
     const run = this.tail.then(
-      () => this.runRequest(text, voice, signal),
-      () => this.runRequest(text, voice, signal),
+      () => this.runRequest(text, signal),
+      () => this.runRequest(text, signal),
     )
     this.tail = run.catch(() => undefined)
     return run
@@ -115,7 +114,7 @@ export class MlxEngine {
     }
   }
 
-  private async runRequest(text: string, voice: string | undefined, signal: AbortSignal): Promise<MlxSynthResult> {
+  private async runRequest(text: string, signal: AbortSignal): Promise<MlxSynthResult> {
     if (this.disposed) throw new EngineFailure('mlx: worker disposed', true)
     if (signal.aborted) throw new EngineFailure('mlx: interrupted before synthesis', true)
     await this.ensureReady(signal)
@@ -148,13 +147,7 @@ export class MlxEngine {
           outDir,
         })
         try {
-          this.send({
-            id,
-            text,
-            ...(voice === undefined ? {} : { voice }),
-            chunkChars: this.resolved.mlxChunkChars,
-            outDir,
-          })
+          this.send({ id, text, chunkChars: 100, outDir })
         } catch (error) {
           cleanup()
           reject(new EngineFailure(`mlx: failed to send request: ${sanitizeText(error instanceof Error ? error.message : String(error))}`, signal.aborted))
@@ -184,18 +177,12 @@ export class MlxEngine {
         [
           script,
           '--model', this.resolved.mlxModel,
-          '--voice', this.resolved.mlxVoice,
-          '--lang', this.resolved.mlxLanguage,
-          '--chunk-chars', String(this.resolved.mlxChunkChars),
+          '--ref-audio', this.resolved.mlxRefAudio ?? '',
+          '--chunk-chars', '100',
           '--buffer-seconds', '1.5',
-          '--player', this.resolved.mlxPlayer,
-          '--temperature', String(this.resolved.mlxTemperature),
-          '--top-p', String(this.resolved.mlxTopP),
-          '--top-k', String(this.resolved.mlxTopK),
-          '--mode', this.resolved.mlxMode,
-          '--clone-mode', this.resolved.mlxCloneMode,
-          ...(this.resolved.mlxRefAudio === null ? [] : ['--ref-audio', this.resolved.mlxRefAudio]),
-          ...(this.resolved.mlxRefText === null ? [] : ['--ref-text', this.resolved.mlxRefText]),
+          '--temperature', '0.4',
+          '--top-p', '0.9',
+          '--top-k', '30',
         ],
         { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HF_HUB_OFFLINE: '1' } },
       )

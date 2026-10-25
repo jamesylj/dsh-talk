@@ -1,13 +1,13 @@
 /**
- * The talk host service: the `talk` Typert Remote namespace plus the speak
- * pipeline the tool and the announcement listeners share. It resolves the
- * effective engine, synthesizes local audio through `ctx.subprocess` (or
- * delegates to the browser voice), writes every local synthesis to the bounded
- * plugin-owned export directory (`audio-export.ts`) so its absolute path can
- * ride the speak tool's canonical value, appends every utterance through the
- * adaptive `dsh-talk/speech` log gate (see `speech.ts`), keeps an in-memory
- * audio cache for the client's `talk/audio` fetches, and applies the settings
- * panel's engine/language edits as append-only profile-patch operations.
+ * The talk host service: the `speak` pipeline the tool, the auto-reply
+ * controller, the manual play button and the turn-end announcement share, plus
+ * the small `talk` Remote namespace the client button and settings panel use.
+ *
+ * Both engines play on the host (MiniMax streams SSE MP3 into ffplay; MLX runs
+ * the resident Qwen3-TTS worker through sounddevice), so there is no browser
+ * audio path, no audio cache and no projection: the service only needs to
+ * start, track and stop host playback. MiniMax failures fall back to the
+ * offline MLX clone engine when `tts.mlx.refAudio` is configured.
  *
  * @module dsh-talk/service
  */
@@ -17,13 +17,13 @@ import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { Session } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-subprocess'
+import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
 import type { Config, ResolvedConfig, TtsEngine } from './config.ts'
 import { resolveConfig } from './config.ts'
-import type { AudioExportState, ExportOutcome, LocalTtsEngine } from './audio-export.ts'
-import { BROWSER_EXPORT_NOTE, exportSynthesizedAudio } from './audio-export.ts'
-import { EngineFailure, synthesize, transcribeFunasr, transcribeWhisper } from './engine.ts'
+import type { LocalTtsEngine } from './audio-export.ts'
+import { exportSynthesizedAudio } from './audio-export.ts'
+import { EngineFailure } from './engine.ts'
+import { findLatestAssistantText } from './auto-reply.ts'
 import { MlxEngine } from './mlx.ts'
 import { MinimaxEngine } from './minimax.ts'
 import { sanitizeText } from './sanitize.ts'
@@ -35,83 +35,44 @@ import {
 } from './settings-patch.ts'
 import { appendSpeechEvent } from './speech.ts'
 import type { DshTalkSpeechEvent, SpeechReason, SpeechTtsEngine } from './speech.ts'
-import type { TalkAudio, TalkInterruptResult, TalkLatest, TalkSettingsInput, TalkSettingsResult, TalkStatus, TalkTranscript } from './wire.ts'
+import type { TalkPlayResult, TalkSettingsInput, TalkSettingsResult, TalkStatus, TalkStopResult } from './wire.ts'
 
 /** Profile patch-layer filename the settings panel appends to. */
 const PROFILE_PATCH_FILENAME = 'cordis.patch.yml'
 
-/** Cap on one synthesized utterance kept in memory (base64-unfriendly, so bytes). */
-const MAX_UTTERANCE_COUNT = 64
+/** Export directory policy (the plugin always uses its own bounded directory). */
+const EXPORT_MAX_FILES = 20
 
-/** Cap on sessions whose speech-log outcomes are remembered (oldest evicted first). */
-const SPEECH_LOG_OUTCOME_SESSIONS = 32
+/** Export age cap in minutes (24 hours). */
+const EXPORT_MAX_AGE_MINUTES = 1_440
 
-/** One cached utterance the client fetches through `talk/audio`. */
-interface StoredUtterance {
-  /** MIME type of the audio. */
-  mime: string
-  /** The audio bytes. */
-  data: Uint8Array
-  /** The spoken text (sanitized). */
-  text: string
-  /** Engine that produced the audio. */
-  engine: LocalTtsEngine
-}
-
-/** One in-flight local synthesis, retained so interruption can be scoped. */
+/** One in-flight synthesis/playback, retained so interruption can be scoped. */
 interface ActiveSynthesis {
-  /** Aborts this utterance's engine work (and its playback, for MLX). */
+  /** Aborts this utterance's engine work (and its playback). */
   readonly controller: AbortController
   /** Session that owns the utterance; absent for headless calls. */
   readonly sessionId?: string
 }
 
-/** Engine-specific delivery fields recorded with one speech event. */
-type SpeechDelivery =
-  | { readonly engine: 'browser'; readonly voice?: string; readonly rate: number; readonly pitch: number }
-  | { readonly engine: LocalTtsEngine }
-
-/** One session's bounded speech-loop record: counters plus the newest utterance. */
-interface SpeechSessionRecord {
-  /** Utterances appended to this session's log. */
-  appended: number
-  /** Utterances this host could not append for this session. */
-  skipped: number
-  /** Newest utterance of this session; absent before its first utterance. */
-  latest?: StoredLatest
-}
-
-/** The newest utterance of one session, without the session id (added on read). */
-type StoredLatest = Omit<TalkLatest, 'sessionId' | 'appended' | 'skipped'>
-
 /** Result of one speak request (the speak tool's canonical value). */
 export interface SpeakOutcome {
-  /** Whether audio was produced or delegated. */
+  /** Whether audio was produced. */
   spoken: boolean
-  /** Engine that produced (or will produce) the audio. */
-  engine: SpeechTtsEngine
-  /** Synthesized audio size in bytes; 0 for the browser engine. */
+  /** Engine that produced (or would have produced) the audio. */
+  engine: TtsEngine
+  /** Synthesized audio size in bytes; 0 on failure. */
   audioBytes: number
-  /** Wall-clock synthesis duration in seconds; absent for the browser engine. */
+  /** Playback duration in seconds; absent on failure. */
   durationSec?: number
-  /** Sanitized failure note (fallback or interruption); absent on clean success. */
+  /** Sanitized failure note; absent on clean success. */
   error?: string
-  /** The utterance id the client plays; absent when nothing was produced. */
+  /** Stable id of this utterance. */
   utteranceId?: string
-  /**
-   * Absolute path of the exported audio file, usable as another tool's file
-   * argument (for example a messenger plugin's `file_path`). Present only when
-   * `audioExport` is `file`.
-   */
+  /** Absolute path of the exported audio file (when `tts.export.enabled`). */
   audioPath?: string
-  /**
-   * What happened to the audio file: `file` (written), `unsupported` (the
-   * browser engine synthesizes in the browser and yields no host bytes),
-   * `disabled` (`tts.export.enabled` is false), `failed` (the write failed and
-   * speech still played). Absent when no audio was produced at all.
-   */
-  audioExport?: AudioExportState
-  /** Sanitized explanation for every `audioExport` state except `file`. */
+  /** What happened to the audio file: `file` / `disabled` / `failed`. */
+  audioExport?: 'file' | 'disabled' | 'failed'
+  /** Sanitized explanation for every export state except `file`. */
   exportNote?: string
 }
 
@@ -119,16 +80,24 @@ export interface SpeakOutcome {
 export interface SpeakOptions {
   /** Engine override (tool arg); falls back to the resolved config. */
   engine?: TtsEngine
-  /** Voice override (tool arg). */
-  voice?: string
-  /** Interrupt current speech before starting (default true). */
-  interrupt?: boolean
   /** Why the utterance is spoken (logged with the event). */
   reason: SpeechReason
   /** Session the utterance is logged to; absent = no log (headless trial). */
   session?: Session
   /** Caller abort signal (the tool's exec signal). */
   signal?: AbortSignal
+  /** Interrupt same-session speech before starting (default true). */
+  interrupt?: boolean
+}
+
+/** One engine synthesis result. */
+interface SynthResult {
+  /** MIME type of the produced audio. */
+  mime: 'audio/mpeg' | 'audio/wav'
+  /** The audio bytes. */
+  data: Uint8Array
+  /** Playback duration in seconds (0 when unknown). */
+  audioSec: number
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -139,67 +108,20 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /**
- * Resolve the effective TTS engine: explicit override 鈫?configured engine 鈫? * `auto` prefers piper (configured model), then edge-tts, then the browser.
- *
- * @param explicit - tool-arg override, or undefined.
- * @param resolved - resolved config.
- * @returns the effective engine.
- */
-export function resolveTtsEngine(explicit: TtsEngine | undefined, resolved: ResolvedConfig): 'browser' | LocalTtsEngine {
-  const selected = explicit ?? resolved.ttsEngine
-  if (selected !== 'auto') return selected
-  if (resolved.piperModelPath !== null) return 'piper'
-  return 'edge-tts'
-}
-
-/**
- * Resolve the effective STT engine for host-side transcription: configured
- * engine 鈫?`auto` prefers funasr (configured endpoint), then whisper
- * (configured model), then the browser's Web Speech.
- *
- * @param resolved - resolved config.
- * @returns the effective engine.
- */
-export function resolveSttEngine(resolved: ResolvedConfig): 'web' | 'funasr' | 'whisper' {
-  if (resolved.sttEngine === 'funasr') return 'funasr'
-  if (resolved.sttEngine === 'whisper') return 'whisper'
-  if (resolved.sttEngine === 'web') return 'web'
-  if (resolved.funasrUrl !== null) return 'funasr'
-  if (resolved.whisperModelPath !== null) return 'whisper'
-  return 'web'
-}
-
-/**
- * Voice-loop host service exported over the `talk` Remote namespace. Speak
- * requests from the tool and the announcement listeners land in {@link speak};
- * the client fetches audio, transcripts speech, interrupts playback, reads
- * the effective settings, reads one session's newest utterance, and applies
- * panel edits through the Remote methods.
+ * Voice-loop host service exported over the `talk` Remote namespace.
  */
 export class TalkService extends TypertRemoteService {
   static inject = ['subprocess']
 
-  /** Cached utterances in insertion order (oldest first). */
-  private readonly utterances = new Map<string, StoredUtterance>()
-  /** Total cached audio bytes. */
-  private totalCachedBytes = 0
-  /** In-flight local syntheses by utterance id, scoped by session for interruption. */
+  /** In-flight syntheses by utterance id, scoped by session for interruption. */
   private readonly activeSyntheses = new Map<string, ActiveSynthesis>()
   /** Resident MLX worker (model stays warm across utterances); lazily spawned. */
   private mlxEngine: MlxEngine | null = null
   /** MiniMax cloud engine (SSE → ffplay); lazily created. */
   private minimaxEngine: MinimaxEngine | null = null
-  /**
-   * Per-session speech-loop records, so a host that cannot carry the
-   * `dsh-talk/speech` event is observable instead of silently dropping every
-   * utterance, and so `talk/latest` can answer for ONE session without reading
-   * whichever session happened to speak last. Bounded: the oldest session is
-   * evicted past {@link SPEECH_LOG_OUTCOME_SESSIONS}.
-   */
-  private readonly speechLogOutcomes = new Map<string, SpeechSessionRecord>()
 
   /**
-   * @param ctx - context carrying the subprocess service.
+   * @param ctx - context carrying the subprocess service and the session store.
    * @param rawConfig - the row's raw loader config (settings writes merge over it).
    * @param resolved - the resolved runtime policy.
    * @param backupCount - patch backups retained per settings write.
@@ -234,48 +156,27 @@ export class TalkService extends TypertRemoteService {
   }
 
   /**
-   * Speak one utterance: resolve the engine, synthesize locally or delegate
-   * to the browser voice, cache the audio, export local synthesis to a file
-   * (whose absolute path rides the outcome), and append the `dsh-talk/speech`
-   * session event through the adaptive gate in `speech.ts` (log-only; skipped
-   * silently on hosts that cannot carry it).
+   * Synthesize one utterance on the host and log it. The resolved engine is
+   * tried first; when it is MiniMax and fails for a non-abort reason, the MLX
+   * clone engine takes over if `tts.fallback` and a reference WAV exist.
    *
    * @param text - text to speak (sanitized and capped here).
-   * @param options - engine/voice/reason/session/signal.
+   * @param options - engine/reason/session/signal/interrupt.
    * @returns the speak outcome (the tool's canonical value).
    */
   async speak(text: string, options: SpeakOptions): Promise<SpeakOutcome> {
     const spoken = sanitizeText(text, this.resolved.maxSpeakChars)
     if (spoken === '') throw new Error('dsh-talk: speak text must not be empty')
 
-    // Preemption is SCOPED: a new utterance only stops speech the SAME session
-    // already had in flight. Announcements and auto-reads pass
-    // `interrupt: false`, so a long read plays to completion instead of being
-    // cancelled by the next turn, approval, or error announcement (a queued
-    // request then plays after it — the MLX worker serializes requests).
+    // Preemption is scoped: a new utterance only stops speech the SAME session
+    // already had in flight. Auto-read and announcements pass `interrupt: false`,
+    // so a long read plays to completion.
     if (options.interrupt !== false) {
       this.interrupt(options.session === undefined ? undefined : { sessionId: String(options.session.id) })
     }
 
-    const engine = resolveTtsEngine(options.engine, this.resolved)
+    let engine: TtsEngine = options.engine ?? this.resolved.ttsEngine
     const utteranceId = randomUUID()
-
-    if (engine === 'browser') {
-      const event = this.speechEvent(utteranceId, this.browserDelivery(options.voice), spoken, 0, options.reason)
-      this.recordSpeechEvent(options.session, event)
-      // Explicit degradation: the browser voice synthesizes on the client, so
-      // there are no host bytes to export — never a silent no-file.
-      return {
-        spoken: true,
-        engine: 'browser',
-        audioBytes: 0,
-        utteranceId,
-        audioExport: 'unsupported',
-        exportNote: BROWSER_EXPORT_NOTE,
-      }
-    }
-
-    const localEngine = engine // edge-tts | macos | minimax | mlx | piper
     const controller = new AbortController()
     this.activeSyntheses.set(utteranceId, {
       controller,
@@ -284,60 +185,55 @@ export class TalkService extends TypertRemoteService {
     const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal])
     const startedAt = Date.now()
     try {
-      // A signal that is already aborted would make `subprocess.spawn` throw
-      // synchronously, which is not an EngineFailure; classify it here as the
-      // interruption it is (for every local engine).
       if (signal.aborted) throw new EngineFailure('speech was interrupted before synthesis', true)
-      if (localEngine === 'mlx' || localEngine === 'minimax') {
-        // MLX renders in a worker that plays each chunk through the system
-        // player as it is synthesized, and MiniMax streams its SSE audio into
-        // ffplay; in both cases the host already played the utterance, so the
-        // client must not play it again. The full audio is still available for
-        // the cache and the exported file.
-        const result = localEngine === 'mlx'
-          ? await this.getMlxEngine().synthesize(spoken, options.voice, signal)
-          : await this.getMinimaxEngine().synthesize(spoken, options.voice, signal)
-        this.cacheUtterance(utteranceId, result.mime, result.data, spoken, localEngine)
-        const exported = await this.exportAudio(utteranceId, localEngine, result.data)
-        const durationSec = result.audioSec > 0 ? result.audioSec : Math.max(0, (Date.now() - startedAt) / 1000)
-        this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, { engine: localEngine }, spoken, result.data.byteLength, options.reason))
-        return { spoken: true, engine: localEngine, audioBytes: result.data.byteLength, durationSec, utteranceId, ...exported }
-      }
-      const result = await synthesize(this.ctx.subprocess, this.resolved, localEngine, spoken, signal, options.voice)
-      const durationSec = Math.max(0, (Date.now() - startedAt) / 1000)
-      this.cacheUtterance(utteranceId, result.mime, result.data, spoken, localEngine)
-      const exported = await this.exportAudio(utteranceId, localEngine, result.data)
-      this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, { engine: localEngine }, spoken, result.data.byteLength, options.reason))
-      return { spoken: true, engine: localEngine, audioBytes: result.data.byteLength, durationSec, utteranceId, ...exported }
-    } catch (error) {
-      const failure = error instanceof EngineFailure ? error : new EngineFailure(sanitizeText(error instanceof Error ? error.message : String(error)), false)
-      if (failure.aborted) {
-        this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, { engine: localEngine }, spoken, 0, options.reason, 'interrupted', true))
-        return { spoken: false, engine: localEngine, audioBytes: 0, error: 'interrupted', utteranceId }
-      }
-      if (this.resolved.ttsFallbackToBrowser) {
-        this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, this.browserDelivery(options.voice), spoken, 0, options.reason, failure.message))
-        return {
-          spoken: true,
-          engine: 'browser',
-          audioBytes: 0,
-          error: `${localEngine} failed: ${failure.message}; fell back to the browser voice`,
-          utteranceId,
-          audioExport: 'unsupported',
-          exportNote: BROWSER_EXPORT_NOTE,
+      let result: SynthResult
+      try {
+        result = await this.synthesizeWith(engine, spoken, signal)
+      } catch (error) {
+        // A MiniMax failure is recoverable: the offline MLX clone engine is the
+        // documented fallback, but only when it is actually configured.
+        const failure = error instanceof EngineFailure
+          ? error
+          : new EngineFailure(sanitizeText(error instanceof Error ? error.message : String(error)), false)
+        if (failure.aborted || engine !== 'minimax' || !this.resolved.ttsFallback || this.resolved.mlxRefAudio === null) {
+          throw failure
         }
+        engine = 'mlx'
+        result = await this.synthesizeWith(engine, spoken, signal)
       }
-      this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, { engine: localEngine }, spoken, 0, options.reason, failure.message))
-      return { spoken: false, engine: localEngine, audioBytes: 0, error: failure.message, utteranceId }
+      const exported = await this.exportAudio(engine, utteranceId, result.data)
+      const durationSec = result.audioSec > 0 ? result.audioSec : Math.max(0, (Date.now() - startedAt) / 1000)
+      this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, engine, spoken, result.data.byteLength, options.reason))
+      return { spoken: true, engine, audioBytes: result.data.byteLength, durationSec, utteranceId, ...exported }
+    } catch (error) {
+      const failure = error instanceof EngineFailure
+        ? error
+        : new EngineFailure(sanitizeText(error instanceof Error ? error.message : String(error)), false)
+      if (failure.aborted) {
+        this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, engine, spoken, 0, options.reason, 'interrupted', true))
+        return { spoken: false, engine, audioBytes: 0, error: 'interrupted', utteranceId }
+      }
+      this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, engine, spoken, 0, options.reason, failure.message))
+      return { spoken: false, engine, audioBytes: 0, error: failure.message, utteranceId }
     } finally {
       this.activeSyntheses.delete(utteranceId)
     }
   }
 
+  /** Run one engine's synthesis for one utterance. */
+  private async synthesizeWith(engine: TtsEngine, text: string, signal: AbortSignal): Promise<SynthResult> {
+    if (engine === 'minimax') {
+      const result = await this.getMinimaxEngine().synthesize(text, signal)
+      return { mime: 'audio/mpeg', data: result.data, audioSec: result.audioSec }
+    }
+    const result = await this.getMlxEngine().synthesize(text, signal)
+    return { mime: 'audio/wav', data: result.data, audioSec: result.audioSec }
+  }
+
   /** Assemble one speech event payload. */
   private speechEvent(
     utteranceId: string,
-    delivery: SpeechDelivery,
+    engine: SpeechTtsEngine,
     text: string,
     audioBytes: number,
     reason: SpeechReason,
@@ -347,49 +243,30 @@ export class TalkService extends TypertRemoteService {
     return {
       kind: 'tts',
       utteranceId,
-      engine: delivery.engine,
+      engine,
       text,
       audioBytes,
       reason,
       ...(error !== undefined ? { error } : {}),
       ...(interrupted === true ? { interrupted: true } : {}),
-      ...(delivery.engine === 'browser' ? {
-        ...(delivery.voice !== undefined ? { voice: delivery.voice } : {}),
-        rate: delivery.rate,
-        pitch: delivery.pitch,
-      } : {}),
     }
   }
 
   /**
-   * Browser delivery settings for one utterance: the per-call `voice` override
-   * wins over the configured `tts.browser.voiceName`; rate/pitch always ride
-   * along so the client needs no settings round-trip at playback time.
+   * Write one synthesized utterance to the bounded export directory when the
+   * user enabled export. Exporting never fails the utterance.
    */
-  private browserDelivery(voiceOverride?: string): Extract<SpeechDelivery, { readonly engine: 'browser' }> {
-    return {
-      engine: 'browser',
-      ...(voiceOverride !== undefined
-        ? { voice: voiceOverride }
-        : this.resolved.browserVoiceName !== null ? { voice: this.resolved.browserVoiceName } : {}),
-      rate: this.resolved.browserRate,
-      pitch: this.resolved.browserPitch,
-    }
-  }
-
-  /**
-   * Write one synthesized utterance to the bounded export directory and report
-   * what happened. Exporting is an addition to speech: a failed write is
-   * described in the outcome (and logged) instead of failing the utterance, so
-   * playback can never be broken by a full disk or a read-only directory.
-   */
-  private async exportAudio(utteranceId: string, engine: LocalTtsEngine, data: Uint8Array): Promise<ExportOutcome> {
+  private async exportAudio(engine: LocalTtsEngine, utteranceId: string, data: Uint8Array): Promise<{
+    audioPath?: string
+    audioExport: 'file' | 'disabled' | 'failed'
+    exportNote?: string
+  }> {
     const outcome = await exportSynthesizedAudio(
       {
         enabled: this.resolved.ttsExportEnabled,
         dir: this.resolved.ttsExportDir,
-        maxFiles: this.resolved.ttsExportMaxFiles,
-        maxAgeMinutes: this.resolved.ttsExportMaxAgeMinutes,
+        maxFiles: EXPORT_MAX_FILES,
+        maxAgeMinutes: EXPORT_MAX_AGE_MINUTES,
       },
       engine,
       utteranceId,
@@ -398,203 +275,69 @@ export class TalkService extends TypertRemoteService {
     if (outcome.audioExport === 'failed') {
       this.ctx.logger.warn(`dsh-talk: ${outcome.exportNote ?? 'audio export failed'}`)
     }
-    return outcome
+    const state = outcome.audioExport === 'unsupported' ? 'failed' : outcome.audioExport
+    return {
+      ...(outcome.audioPath === undefined ? {} : { audioPath: outcome.audioPath }),
+      audioExport: state,
+      ...(outcome.exportNote === undefined ? {} : { exportNote: outcome.exportNote }),
+    }
   }
 
-  /** Append one log-only speech event through the adaptive gate; a disposed session must never kill speech. */
+  /** Append one log-only speech event; a disposed session must never kill speech. */
   private recordSpeechEvent(session: Session | undefined, event: DshTalkSpeechEvent): void {
     if (session === undefined) return
-    let appended = false
     try {
-      appended = appendSpeechEvent(session, event)
+      appendSpeechEvent(session, event)
     } catch (error) {
       this.ctx.logger.warn(`dsh-talk: failed to log speech event: ${sanitizeText(error instanceof Error ? error.message : String(error))}`)
     }
-    this.recordSpeechLogOutcome(String(session.id), appended, event)
   }
 
-  /** Fold one append attempt into the per-session record table (never throws). */
-  private recordSpeechLogOutcome(sessionId: string, appended: boolean, event: DshTalkSpeechEvent): void {
-    const current = this.speechLogOutcomes.get(sessionId) ?? { appended: 0, skipped: 0 }
-    if (appended) current.appended += 1
-    else current.skipped += 1
-    current.latest = {
-      utteranceId: event.utteranceId,
-      engine: event.engine,
-      text: event.text,
-      audioBytes: event.audioBytes,
-      reason: event.reason,
-      logged: appended,
-      ...(event.error !== undefined ? { error: event.error } : {}),
-      ...(event.interrupted === true ? { interrupted: true as const } : {}),
-    }
-    this.speechLogOutcomes.delete(sessionId)
-    this.speechLogOutcomes.set(sessionId, current)
-    while (this.speechLogOutcomes.size > SPEECH_LOG_OUTCOME_SESSIONS) {
-      const oldest = this.speechLogOutcomes.keys().next().value as string | undefined
-      if (oldest === undefined) break
-      this.speechLogOutcomes.delete(oldest)
-    }
-  }
-
-  /**
-   * Read one session's speech-log outcome counters (`undefined` when the
-   * session never uttered anything). `skipped` counts the utterances this host
-   * could not record, which is the visible form of the gate's degradation.
-   * @param sessionId - the session to read.
-   * @returns the counters, or undefined when nothing was recorded.
-   */
-  speechLogOutcome(sessionId: string): { appended: number; skipped: number } | undefined {
-    const value = this.speechLogOutcomes.get(sessionId)
-    return value === undefined ? undefined : { appended: value.appended, skipped: value.skipped }
-  }
-
-  /**
-   * Read the newest utterance of ONE session (`talk/latest`). Host-side records
-   * are keyed by session id, so a multi-session client never receives another
-   * session's utterance; the counters ride along as the visible form of the
-   * log gate's degradation.
-   *
-   * @param sessionId - the session to read (required).
-   * @returns the newest utterance plus this session's counters, or null when
-   *   that session never spoke.
-   */
-  latest(sessionId: string): TalkLatest | null {
-    if (typeof sessionId !== 'string' || sessionId === '') {
-      throw new Error('dsh-talk: talk/latest requires a non-empty sessionId')
-    }
-    const record = this.speechLogOutcomes.get(sessionId)
-    if (record?.latest === undefined) return null
-    return {
-      sessionId,
-      ...record.latest,
-      appended: record.appended,
-      skipped: record.skipped,
-    }
-  }
-
-  /** Store one utterance, evicting the oldest entries past the byte/count caps. */
-  private cacheUtterance(
-    utteranceId: string,
-    mime: string,
-    data: Uint8Array,
-    text: string,
-    engine: LocalTtsEngine,
-  ): void {
-    const maxBytes = this.resolved.maxAudioCacheBytes
-    this.utterances.set(utteranceId, { mime, data, text, engine })
-    this.totalCachedBytes += data.byteLength
-    while ((this.totalCachedBytes > maxBytes || this.utterances.size > MAX_UTTERANCE_COUNT) && this.utterances.size > 1) {
-      const oldest = this.utterances.entries().next().value as [string, StoredUtterance] | undefined
-      if (oldest === undefined || oldest[0] === utteranceId) break
-      this.utterances.delete(oldest[0])
-      this.totalCachedBytes -= oldest[1].data.byteLength
-    }
-  }
-
-  /** Read-only settings snapshot for the settings tab. */
+  /** Read-only state snapshot for the button and settings tab. */
   status(): TalkStatus {
     return {
-      stt: {
-        engine: this.resolved.sttEngine,
-        resolved: resolveSttEngine(this.resolved),
-        language: this.resolved.sttLanguage,
-        silenceFinaliseMs: this.resolved.sttSilenceFinaliseMs,
-        funasrUrl: this.resolved.funasrUrl,
-        whisperModel: this.resolved.whisperModelPath,
-      },
-      tts: {
-        engine: this.resolved.ttsEngine,
-        resolved: resolveTtsEngine(undefined, this.resolved),
-        voice: this.resolved.ttsVoice,
-        fallbackToBrowser: this.resolved.ttsFallbackToBrowser,
-        piperModel: this.resolved.piperModelPath,
-        edgeTtsVoice: this.resolved.edgeTtsVoice,
-        browser: {
-          voiceName: this.resolved.browserVoiceName,
-          rate: this.resolved.browserRate,
-          pitch: this.resolved.browserPitch,
-        },
-      },
-      announce: {
-        enabled: this.resolved.announceEnabled,
-        onTurnEnd: this.resolved.announceOnTurnEnd,
-        onApproval: this.resolved.announceOnApproval,
-        onError: this.resolved.announceOnError,
-      },
-      autoReply: {
-        enabled: this.resolved.autoReplyEnabled,
-        maxChars: this.resolved.autoReplyMaxChars,
-      },
-      record: {
-        enabled: this.resolved.recordEnabled,
-        hotkey: this.resolved.recordHotkey,
-        maxSeconds: this.resolved.recordMaxSeconds,
-        autoSubmit: this.resolved.recordAutoSubmit,
-        vad: {
-          enabled: this.resolved.vadEnabled,
-          silenceMs: this.resolved.vadSilenceMs,
-          energyThreshold: this.resolved.vadEnergyThreshold,
-        },
-      },
-      interrupt: this.resolved.interruptEnabled,
-      patchFile: this.patchFile(),
-    }
-  }
-
-  /** Serve one cached utterance's audio; null when evicted or never stored. */
-  audio(utteranceId: string): TalkAudio | null {
-    const stored = this.utterances.get(utteranceId)
-    if (stored === undefined) return null
-    return {
-      utteranceId,
-      mime: stored.mime,
-      data: Buffer.from(stored.data).toString('base64'),
-      text: stored.text,
-      engine: stored.engine,
+      engine: this.resolved.ttsEngine,
+      speaking: this.activeSyntheses.size > 0,
+      voiceId: this.resolved.minimaxVoiceId,
+      autoReplyEnabled: this.resolved.autoReplyEnabled,
     }
   }
 
   /**
-   * Transcribe one 16 kHz mono WAV (base64) with the configured local STT
-   * engine. The web engine never reaches this endpoint: it runs in the
-   * browser and fills the composer directly.
+   * The manual play button: read the newest assistant reply of one session
+   * through the same host pipeline. No reply exists → a reported no-op, never
+   * an error the client has to translate.
    *
-   * @param audioData - base64 WAV bytes from the client.
-   * @returns the recognized text.
+   * @param sessionId - the session whose latest reply should be read.
+   * @returns whether something was spoken, plus the engine/text.
    */
-  async transcribe(audioData: string): Promise<TalkTranscript> {
-    const engine = resolveSttEngine(this.resolved)
-    if (engine === 'web') {
-      throw new Error('dsh-talk: the web STT engine transcribes in the browser; configure funasr or whisper for host transcription')
+  async playLatest(sessionId: string): Promise<TalkPlayResult> {
+    if (typeof sessionId !== 'string' || sessionId === '') {
+      throw new Error('dsh-talk: talk/playLatest requires a non-empty sessionId')
     }
-    let wav: Uint8Array
-    try {
-      wav = new Uint8Array(Buffer.from(audioData, 'base64'))
-    } catch {
-      throw new Error('dsh-talk: audioData is not valid base64')
+    const sessions = (this.ctx as unknown as { sessions?: SessionStore }).sessions
+    const session = sessions?.get(sessionId as never)
+    if (session === undefined) return { spoken: false, engine: null, error: 'session not found' }
+    const text = findLatestAssistantText(session.snapshotEvents(), this.resolved.maxSpeakChars)
+    if (text === null) return { spoken: false, engine: null, error: 'no assistant reply to read' }
+    const outcome = await this.speak(text, { reason: 'manual', session, interrupt: true })
+    return {
+      spoken: outcome.spoken,
+      engine: outcome.engine,
+      ...(outcome.spoken ? { text } : {}),
+      ...(outcome.error === undefined ? {} : { error: outcome.error }),
     }
-    if (wav.byteLength === 0) throw new Error('dsh-talk: audioData is empty')
-    if (wav.byteLength > 16 * 1024 * 1024) throw new Error('dsh-talk: audio exceeds the 16 MiB cap')
-    const text = engine === 'whisper'
-      ? await transcribeWhisper(this.ctx.subprocess, this.resolved, wav, this.resolved.sttLanguage, new AbortController().signal)
-      : await transcribeFunasr(this.resolved, wav, new AbortController().signal)
-    return { text, engine, language: this.resolved.sttLanguage }
   }
 
   /**
-   * Stop every in-flight local synthesis (the user started talking).
+   * Stop every in-flight host synthesis (the button's stop action).
    *
-   * @param scope - optional session restriction. The mic button calls this
-   *   unscoped and stops every session's speech; the speak pipeline passes the
-   *   calling session's id so one session can never cancel another session's
-   *   long read.
+   * @param scope - optional session restriction (unscoped stops everything).
    * @returns whether anything was stopped.
    */
-  interrupt(scope?: { readonly sessionId?: string }): TalkInterruptResult {
+  interrupt(scope?: { readonly sessionId?: string }): TalkStopResult {
     const sessionId = scope?.sessionId
     let stopped = false
-    // Iterate over a snapshot: the map is mutated while aborting.
     for (const [utteranceId, active] of [...this.activeSyntheses]) {
       if (sessionId !== undefined && active.sessionId !== sessionId) continue
       stopped = true
@@ -604,38 +347,26 @@ export class TalkService extends TypertRemoteService {
     return { stopped }
   }
 
-  /**
-   * Whether a local synthesis is in flight right now (for MLX its audio may
-   * still be playing). Announcements use this to stay silent instead of
-   * queueing a stale line behind a long read.
-   *
-   * @returns true while at least one utterance is being synthesized.
-   */
+  /** Whether a host synthesis/playback is in flight right now. */
   isSpeaking(): boolean {
     return this.activeSyntheses.size > 0
   }
 
   /**
-   * Apply the settings panel's engine/language edits: validate, merge over
-   * the row's raw config, and append one row operation to the profile
-   * patch layer (backup first). The change takes effect on the next reload.
+   * Apply the settings panel's edits: validate, merge over the row's raw
+   * config, and append one row operation to the profile patch layer.
    *
-   * @param settings - the validated-at-the-wire panel submission.
+   * @param settings - the wire-validated panel submission.
    * @returns where the operation landed.
    */
   async applySettings(settings: TalkSettingsInput): Promise<TalkSettingsResult> {
-    const validated = validateSettingsInput(settings, this.rawConfig)
+    const validated = validateSettingsInput(settings)
     if (!validated.ok) {
       throw new Error(`dsh-talk: ${validated.issues.map(issue => issue.text).join(' ')}`)
     }
     const file = this.patchFile()
     if (file === null) throw new Error('dsh-talk: cannot locate the profile patch layer (ctx.baseUrl is unset)')
     const rowConfig = mergeTalkRowConfig(this.rawConfig, validated.settings)
-    // A7: validate the MERGED row before touching the patch layer. The wire
-    // validation only checks the submission itself; a combination that is
-    // invalid against the row's raw config (e.g. selecting funasr while no URL
-    // is configured) must fail here — with the patch file byte-identical and no
-    // backup created — instead of being appended and breaking the next load.
     try {
       resolveConfig(rowConfig as Config)
     } catch (error) {
@@ -644,10 +375,9 @@ export class TalkService extends TypertRemoteService {
       )
     }
     const fragment = renderSettingsFragment(rowConfig)
-    const { backupPath, bytes } = await appendSettingsFragment(file, fragment, this.backupCount)
+    const { bytes } = await appendSettingsFragment(file, fragment, this.backupCount)
     return {
       file,
-      backupPath,
       bytes,
       note: 'Settings appended to the profile patch layer. Reload the profile (or restart the web app) to apply them.',
     }
@@ -655,9 +385,6 @@ export class TalkService extends TypertRemoteService {
 
   /** Absolute path of the profile patch layer, or null when unknown. */
   private patchFile(): string | null {
-    // `baseUrl` is provided by the profile-bundle loader at mount; read it
-    // structurally so this package needs no loader dependency (the loader
-    // package is not published to the registry).
     const ctx = this.ctx as unknown as { baseUrl?: unknown }
     const base = ctx.baseUrl
     if (typeof base !== 'string' || base === '') return null

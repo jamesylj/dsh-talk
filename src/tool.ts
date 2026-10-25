@@ -1,15 +1,13 @@
 /**
- * The `speak` tool: the agent's audible reply channel. Execution resolves
- * the TTS engine through the service (config defaults + per-call overrides)
- * and returns a small canonical value the model can reason about — the audio
- * itself plays in the browser and never enters model context. The model
- * only sees the render text; the spoken utterance lands in the session log
- * as a `dsh-talk/speech` event.
+ * The `speak` tool: the agent's audible reply channel. Execution hands the
+ * text to the talk service, which plays it on the host through MiniMax (or the
+ * MLX clone fallback); the audio itself never enters model context. The model
+ * only sees the render text, and the utterance lands in the session log as a
+ * `dsh-talk/speech` event.
  *
- * A local engine (edge-tts/piper/macos) also writes the audio to a bounded
- * plugin-owned file, and the absolute path rides the value and the render text
- * so the model can hand it to another tool (a messenger's file argument). The
- * browser engine has no host bytes and says so explicitly.
+ * When `tts.export.enabled` is on, the synthesized audio is also written to the
+ * plugin's bounded directory and the absolute path rides the value/render text
+ * so the model can hand it to another tool.
  *
  * @module dsh-talk/tool
  */
@@ -19,10 +17,9 @@ import { redactSecrets, sanitizeText } from './sanitize.ts'
 import type { TalkService } from './service.ts'
 
 /**
- * Render the audio-file clause of one successful utterance. `displayPath` is
- * deliberately NOT applied: the path is the usable artifact (the model passes
- * it verbatim to another tool), it lives in the plugin's own directory rather
- * than a temp dir, and it still passes `redactSecrets`.
+ * Render the audio-file clause of one outcome. `displayPath` is deliberately
+ * NOT applied: the path is the usable artifact (the model passes it verbatim
+ * to another tool) and it still passes `redactSecrets`.
  *
  * @param value - the canonical outcome fields that describe the file.
  * @returns the sentence to append, or an empty string when there is nothing to say.
@@ -37,8 +34,7 @@ function renderAudioFile(value: { audioPath?: string; audioExport?: string; expo
 }
 
 /**
- * Render one speak outcome as the model-facing content. The value shape is
- * the schema-inferred canonical value (every property optional).
+ * Render one speak outcome as the model-facing content.
  *
  * @param args - the validated tool arguments.
  * @param value - the canonical outcome.
@@ -69,9 +65,7 @@ export function renderSpeak(args: { text: string }, value: {
 }
 
 /**
- * Assemble the `speak` tool definition. `execute` returns only the canonical
- * {@link SpeakOutcome} declared by the output schema; infrastructure failures
- * (empty text) throw so the pipeline marks the call errored.
+ * Assemble the `speak` tool definition.
  *
  * @param service - the talk service the execution delegates to.
  * @param maxChars - cap on one spoken text (resolved config).
@@ -80,7 +74,7 @@ export function renderSpeak(args: { text: string }, value: {
 export function speakTool(service: TalkService, maxChars: number) {
   return defineTool({
     name: 'speak',
-    description: 'Speak text aloud to the user through the configured text-to-speech engine (browser voice, edge-tts, piper, the macOS system voice, the MiniMax cloud voice, or the MLX local model). Use it for audible replies. The audio plays in the browser; with a local engine (edge-tts/piper/macos) it is also written to a file whose absolute path is returned in audioPath and can be passed to another tool that takes a file path; the minimax and mlx engines play on the host as they synthesize, so ask for long texts only when you mean to. The session log records what was spoken.',
+    description: 'Speak text aloud to the user on the host machine (MiniMax cloud voice by default, local MLX clone fallback). Use it for audible replies. Audio plays on the host as it synthesizes; with tts.export.enabled the file path is returned in audioPath. The session log records what was spoken.',
     parameters: {
       text: {
         type: 'string',
@@ -89,16 +83,8 @@ export function speakTool(service: TalkService, maxChars: number) {
       },
       engine: {
         type: 'string',
-        enum: ['auto', 'browser', 'edge-tts', 'macos', 'minimax', 'mlx', 'piper'],
+        enum: ['minimax', 'mlx'],
         description: 'TTS engine override; default is the configured engine.',
-      },
-      voice: {
-        type: 'string',
-        description: 'Voice name override for the resolved engine.',
-      },
-      interrupt: {
-        type: 'boolean',
-        description: 'Interrupt speech this session already has in flight before starting (default true); other sessions are never preempted.',
       },
     },
     output: {
@@ -112,7 +98,7 @@ export function speakTool(service: TalkService, maxChars: number) {
           error: { type: 'string' },
           utteranceId: { type: 'string' },
           audioPath: { type: 'string' },
-          audioExport: { type: 'string', enum: ['file', 'unsupported', 'disabled', 'failed'] },
+          audioExport: { type: 'string', enum: ['file', 'disabled', 'failed'] },
           exportNote: { type: 'string' },
         },
         additionalProperties: false,
@@ -126,8 +112,6 @@ export function speakTool(service: TalkService, maxChars: number) {
       const session = exec.agent?.session
       return await service.speak(text, {
         ...(args.engine === undefined ? {} : { engine: args.engine }),
-        ...(args.voice === undefined ? {} : { voice: args.voice }),
-        ...(args.interrupt === undefined ? {} : { interrupt: args.interrupt }),
         reason: 'speak-tool',
         ...(session === undefined ? {} : { session }),
         signal: exec.signal,

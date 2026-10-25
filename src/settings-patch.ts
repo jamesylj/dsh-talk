@@ -13,7 +13,7 @@
 import { copyFile, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Config } from './config.ts'
-import { STT_ENGINES, TTS_ENGINES, type TalkSettingsInput } from './wire.ts'
+import { TTS_ENGINES, type TalkSettingsInput } from './wire.ts'
 
 /** Backup filename suffix: `<file>.bak-<epoch-ms>`. */
 const BACKUP_SUFFIX = '.bak-'
@@ -33,7 +33,7 @@ export const TALK_PACKAGE_NAME = 'dsh-talk'
 /** One validation error, code + human text (the client localizes the code). */
 export interface TalkSettingsIssue {
   /** Stable error code (locale keys derive from it). */
-  code: 'stt-engine-invalid' | 'tts-engine-invalid' | 'language-invalid' | 'funasr-requires-url' | 'settings-malformed'
+  code: 'tts-engine-invalid' | 'voice-id-invalid' | 'settings-malformed'
   /** English explanation (fallback text on every surface). */
   text: string
 }
@@ -53,52 +53,31 @@ export type TalkSettingsValidation =
  * @param rawConfig - the row's current raw config (host-owned).
  * @returns the validation outcome.
  */
-export function validateSettingsInput(input: unknown, rawConfig: Config | undefined): TalkSettingsValidation {
+export function validateSettingsInput(input: unknown): TalkSettingsValidation {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     return { ok: false, issues: [{ code: 'settings-malformed', text: 'Settings must be a JSON object.' }] }
   }
   const value = input as Record<string, unknown>
   const issues: TalkSettingsIssue[] = []
-  const sttEngine = value['sttEngine']
-  if (sttEngine !== undefined && !(STT_ENGINES as readonly unknown[]).includes(sttEngine)) {
-    issues.push({ code: 'stt-engine-invalid', text: 'sttEngine must be one of auto | web | funasr | whisper.' })
+  const engine = value['engine']
+  if (engine !== undefined && !(TTS_ENGINES as readonly unknown[]).includes(engine)) {
+    issues.push({ code: 'tts-engine-invalid', text: 'engine must be one of minimax | mlx.' })
   }
-  const ttsEngine = value['ttsEngine']
-  if (ttsEngine !== undefined && !(TTS_ENGINES as readonly unknown[]).includes(ttsEngine)) {
-    issues.push({ code: 'tts-engine-invalid', text: 'ttsEngine must be one of auto | browser | edge-tts | macos | piper.' })
+  const voiceId = value['voiceId']
+  if (voiceId !== undefined && (typeof voiceId !== 'string' || voiceId.trim() === '')) {
+    issues.push({ code: 'voice-id-invalid', text: 'voiceId must be a non-empty string.' })
   }
-  const language = value['language']
-  if (language !== undefined && (typeof language !== 'string' || (language !== 'auto' && !/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(language)))) {
-    issues.push({ code: 'language-invalid', text: 'language must be "auto" or a BCP-47 tag.' })
-  }
-  for (const key of ['announceEnabled', 'onTurnEnd', 'onApproval', 'onError', 'autoReplyEnabled', 'interrupt']) {
-    const entry = value[key]
-    if (entry !== undefined && typeof entry !== 'boolean') {
-      issues.push({ code: 'settings-malformed', text: `${key} must be a boolean.` })
-    }
-  }
-  // Enabling the funasr engine without an endpoint would fail at first use;
-  // refuse it here so the panel can explain instead of persisting a broken row.
-  const effectiveStt = sttEngine ?? rawConfig?.stt?.engine ?? 'auto'
-  if (effectiveStt === 'funasr') {
-    const url = rawConfig?.stt?.funasr?.url
-    if (typeof url !== 'string' || url === '') {
-      issues.push({ code: 'funasr-requires-url', text: 'The funasr engine needs stt.funasr.url set in cordis.patch.yml first.' })
-    }
+  const autoReplyEnabled = value['autoReplyEnabled']
+  if (autoReplyEnabled !== undefined && typeof autoReplyEnabled !== 'boolean') {
+    issues.push({ code: 'settings-malformed', text: 'autoReplyEnabled must be a boolean.' })
   }
   if (issues.length > 0) return { ok: false, issues }
   return {
     ok: true,
     settings: {
-      ...(sttEngine !== undefined ? { sttEngine: sttEngine as TalkSettingsInput['sttEngine'] } : {}),
-      ...(ttsEngine !== undefined ? { ttsEngine: ttsEngine as TalkSettingsInput['ttsEngine'] } : {}),
-      ...(typeof language === 'string' ? { language } : {}),
-      ...(value['announceEnabled'] === true || value['announceEnabled'] === false ? { announceEnabled: value['announceEnabled'] } : {}),
-      ...(value['onTurnEnd'] === true || value['onTurnEnd'] === false ? { onTurnEnd: value['onTurnEnd'] } : {}),
-      ...(value['onApproval'] === true || value['onApproval'] === false ? { onApproval: value['onApproval'] } : {}),
-      ...(value['onError'] === true || value['onError'] === false ? { onError: value['onError'] } : {}),
-      ...(value['autoReplyEnabled'] === true || value['autoReplyEnabled'] === false ? { autoReplyEnabled: value['autoReplyEnabled'] } : {}),
-      ...(value['interrupt'] === true || value['interrupt'] === false ? { interrupt: value['interrupt'] } : {}),
+      ...(engine !== undefined ? { engine: engine as TalkSettingsInput['engine'] } : {}),
+      ...(typeof voiceId === 'string' ? { voiceId } : {}),
+      ...(autoReplyEnabled === true || autoReplyEnabled === false ? { autoReplyEnabled } : {}),
     },
   }
 }
@@ -117,30 +96,20 @@ export function mergeTalkRowConfig(rawConfig: Config | undefined, settings: Talk
   const merged: Record<string, unknown> = {
     ...(rawConfig !== undefined ? { ...rawConfig } : {}),
   }
-  const stt = (typeof merged['stt'] === 'object' && merged['stt'] !== null && !Array.isArray(merged['stt']))
-    ? { ...(merged['stt'] as Record<string, unknown>) }
-    : {}
   const tts = (typeof merged['tts'] === 'object' && merged['tts'] !== null && !Array.isArray(merged['tts']))
     ? { ...(merged['tts'] as Record<string, unknown>) }
     : {}
-  const announce = (typeof merged['announce'] === 'object' && merged['announce'] !== null && !Array.isArray(merged['announce']))
-    ? { ...(merged['announce'] as Record<string, unknown>) }
+  const minimax = (typeof tts['minimax'] === 'object' && tts['minimax'] !== null && !Array.isArray(tts['minimax']))
+    ? { ...(tts['minimax'] as Record<string, unknown>) }
     : {}
   const autoReply = (typeof merged['autoReply'] === 'object' && merged['autoReply'] !== null && !Array.isArray(merged['autoReply']))
     ? { ...(merged['autoReply'] as Record<string, unknown>) }
     : {}
-  if (settings.sttEngine !== undefined) stt['engine'] = settings.sttEngine
-  if (settings.language !== undefined) stt['language'] = settings.language
-  if (settings.ttsEngine !== undefined) tts['engine'] = settings.ttsEngine
-  if (settings.announceEnabled !== undefined) announce['enabled'] = settings.announceEnabled
-  if (settings.onTurnEnd !== undefined) announce['onTurnEnd'] = settings.onTurnEnd
-  if (settings.onApproval !== undefined) announce['onApproval'] = settings.onApproval
-  if (settings.onError !== undefined) announce['onError'] = settings.onError
+  if (settings.engine !== undefined) tts['engine'] = settings.engine
+  if (settings.voiceId !== undefined) minimax['voiceId'] = settings.voiceId
   if (settings.autoReplyEnabled !== undefined) autoReply['enabled'] = settings.autoReplyEnabled
-  if (settings.interrupt !== undefined) merged['interrupt'] = settings.interrupt
-  merged['stt'] = stt
+  tts['minimax'] = minimax
   merged['tts'] = tts
-  merged['announce'] = announce
   merged['autoReply'] = autoReply
   return merged
 }

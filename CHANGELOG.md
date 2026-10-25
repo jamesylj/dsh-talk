@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.5.0] - 2026-10-25
+
+### Breaking changes
+
+- **Host-played TTS only: MiniMax + MLX.** The plug-in now keeps exactly two
+  engines, both of which play on the host: MiniMax `speech-2.8-turbo` (SSE MP3
+  streamed into `ffplay`) and the local Qwen3-TTS **Base** worker with x-vector
+  voice cloning from `tts.mlx.refAudio`. Removed entirely: the microphone /
+  Web Speech / MediaRecorder voice input, FunASR and whisper.cpp transcription,
+  edge-tts, piper, the macOS `say` engine, the browser voice/TTS fallback, the
+  browser `<audio>` playback path (`talk/audio`, the audio cache, the
+  `talk:speech` projection) and the old multi-field settings write-back.
+- **The composer button is now a play/stop control.** Click it to read the
+  newest assistant reply of the current session on the host
+  (`talk/playLatest`); click while speaking to stop it (`talk/stop`). It no
+  longer records or transcribes; use the harness voice-input bundle for
+  dictation.
+- **Settings tab simplified** to engine (minimax / mlx), MiniMax voice id and
+  the auto-reply switch; saving still appends one operation to the profile
+  patch layer (reload to apply).
+- **Audio export is now off by default** (`tts.export.enabled: false`) and only
+  the directory is configurable.
+- **Minimal configuration.** The 67-key v0.4 surface is reduced to 20 keys;
+  removed keys for STT/record/announcements/custom phrases/rate/voice/etc. and
+  most engine tuning knobs are hard-coded to the values measured in this
+  repository.
+- **One announcement.** Only the generic "Turn complete." line remains; the
+  approval and error announcements were removed (never used) and announcements
+  no longer queue behind a long read.
+
+### Fixed
+
+- The MiniMax idle timeout and EPIPE hardening from 0.4.2 are part of the new
+  engine; the v0.5 service keeps the scoped-interruption rule (auto-read and
+  announcements never preempt a long read) and adds the same rule to the manual
+  button.
+
 ## [0.4.2] - 2026-10-25
 
 ### Fixed

@@ -2,46 +2,31 @@
  * The client-side Remote face of the `talk` namespace: the hand-written
  * `TypertRemoteContribution` mounted through `ctx.remote.$mount`, plus the
  * declaration merging that types `ctx.remote.talk`. The descriptor list is
- * shared with the host `./typert` manifest (`../wire.ts`), so the two faces
- * can never drift.
+ * shared with the host `./typert` manifest (`../wire.ts`).
  *
  * @module dsh-talk/client/remote
  */
 
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { TALK_INVOCATIONS } from '../wire.ts'
-import type {
-  TalkAudio,
-  TalkInterruptResult,
-  TalkLatest,
-  TalkSettingsInput,
-  TalkSettingsResult,
-  TalkStatus,
-  TalkTranscript,
-} from '../wire.ts'
+import type { TalkPlayResult, TalkSettingsInput, TalkSettingsResult, TalkStatus, TalkStopResult } from '../wire.ts'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$talk {
-    /** Read-only settings snapshot. */
+    /** Read-only state snapshot (engine, speaking, voice, auto-reply switch). */
     status: () => Promise<RemoteResult<TalkStatus>>
-    /** Serve one cached utterance's audio; null when evicted. */
-    audio: (utteranceId: string) => Promise<RemoteResult<TalkAudio | null>>
-    /** Transcribe one base64 WAV with the configured local STT engine. */
-    transcribe: (audioData: string) => Promise<RemoteResult<TalkTranscript>>
+    /** Read the newest assistant reply of one session aloud on the host. */
+    playLatest: (sessionId: string) => Promise<RemoteResult<TalkPlayResult>>
+    /** Stop in-flight host playback. */
+    stop: () => Promise<RemoteResult<TalkStopResult>>
     /** Apply the settings panel's edits as an append-only profile patch operation. */
     applySettings: (settings: TalkSettingsInput) => Promise<RemoteResult<TalkSettingsResult>>
-    /** Stop in-flight host synthesis (the user started talking). */
-    interrupt: () => Promise<RemoteResult<TalkInterruptResult>>
-    /** The newest utterance of ONE session (null when it never spoke); session-keyed, so multi-session surfaces never read another session's utterance. */
-    latest: (sessionId: string) => Promise<RemoteResult<TalkLatest | null>>
   }
   interface TypertRemoteMap {
     'talk/status': () => Promise<RemoteResult<TalkStatus>>
-    'talk/audio': (utteranceId: string) => Promise<RemoteResult<TalkAudio | null>>
-    'talk/transcribe': (audioData: string) => Promise<RemoteResult<TalkTranscript>>
+    'talk/playLatest': (sessionId: string) => Promise<RemoteResult<TalkPlayResult>>
+    'talk/stop': () => Promise<RemoteResult<TalkStopResult>>
     'talk/applySettings': (settings: TalkSettingsInput) => Promise<RemoteResult<TalkSettingsResult>>
-    'talk/interrupt': () => Promise<RemoteResult<TalkInterruptResult>>
-    'talk/latest': (sessionId: string) => Promise<RemoteResult<TalkLatest | null>>
   }
   interface TypertRemoteNamespaceMap {
     talk: TypertRemoteNamespace$talk

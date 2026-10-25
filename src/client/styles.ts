@@ -11,10 +11,11 @@ export function installTalkStyles(): () => void {
   const style = document.createElement('style')
   style.dataset['dshTalkStyles'] = '1'
   style.textContent = `
-    [data-dsh-talk-mic] {
+    [data-dsh-talk-voice] {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      justify-content: center;
+      min-width: 28px;
       padding: 4px 8px;
       border: 1px solid transparent;
       border-radius: 6px;
@@ -22,15 +23,16 @@ export function installTalkStyles(): () => void {
       cursor: pointer;
       font: inherit;
       color: inherit;
+      line-height: 1;
     }
-    [data-dsh-talk-mic]:hover {
+    [data-dsh-talk-voice]:hover {
       background: rgba(127, 127, 127, 0.12);
     }
-    [data-dsh-talk-mic][data-recording='true'] {
+    [data-dsh-talk-voice][data-speaking='true'] {
       border-color: #d33;
       color: #d33;
     }
-    [data-dsh-talk-mic][data-disabled='true'] {
+    [data-dsh-talk-voice][data-disabled='true'] {
       opacity: 0.45;
       cursor: default;
     }
@@ -60,6 +62,11 @@ export function installTalkStyles(): () => void {
     [data-dsh-talk-settings] .note {
       font-size: 0.8em;
       opacity: 0.75;
+    }
+    [data-dsh-talk-settings] button {
+      align-self: flex-start;
+      padding: 4px 12px;
+      font: inherit;
     }
   `
   document.head.appendChild(style)

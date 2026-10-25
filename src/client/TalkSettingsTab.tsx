@@ -1,8 +1,7 @@
 /**
- * The talk settings tab (id `talk` in `settings.plugins.tab`): STT/TTS
- * engine and language selects, announcement switches, the auto-reply
- * read-aloud toggle, the speak-to-interrupt toggle, and an append-only save
- * through `talk/applySettings`.
+ * The simplified talk settings tab (id `talk` in `settings.plugins.tab`):
+ * engine select (MiniMax / MLX), the MiniMax voice id, and the auto-reply
+ * read-aloud switch, saved as one append-only profile-patch operation.
  *
  * @module dsh-talk/client/TalkSettingsTab
  */
@@ -35,13 +34,20 @@ export type TalkSettingsTabProps =
 export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
   const { status, applySettings, t } = props
   const [snapshot, setSnapshot] = useState<TalkStatus | undefined>(undefined)
+  const [engine, setEngine] = useState<TalkStatus['engine']>('minimax')
+  const [voiceId, setVoiceId] = useState('')
+  const [autoReplyEnabled, setAutoReplyEnabled] = useState(true)
   const [note, setNote] = useState<string | undefined>(undefined)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     void status().then(value => {
-      if (!cancelled) setSnapshot(value)
+      if (cancelled) return
+      setSnapshot(value)
+      setEngine(value.engine)
+      setVoiceId(value.voiceId)
+      setAutoReplyEnabled(value.autoReplyEnabled)
     }).catch(() => {})
     return () => {
       cancelled = true
@@ -50,22 +56,9 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
 
   if (snapshot === undefined) return null
 
-  const sttEngine = snapshot.stt.engine
-  const ttsEngine = snapshot.tts.engine
-  const language = snapshot.stt.language
   const save = (): void => {
     setFailed(false)
-    void applySettings({
-      sttEngine,
-      ttsEngine,
-      language,
-      announceEnabled: snapshot.announce.enabled,
-      onTurnEnd: snapshot.announce.onTurnEnd,
-      onApproval: snapshot.announce.onApproval,
-      onError: snapshot.announce.onError,
-      autoReplyEnabled: snapshot.autoReply.enabled,
-      interrupt: snapshot.interrupt,
-    }).then(result => {
+    void applySettings({ engine, voiceId: voiceId.trim(), autoReplyEnabled }).then(result => {
       setNote(result.note)
     }).catch(() => {
       setFailed(true)
@@ -76,57 +69,23 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
   return (
     <div data-dsh-talk-settings>
       <label>
-        {t('sttEngine')}
-        <select value={sttEngine} onChange={event => setSnapshot({ ...snapshot, stt: { ...snapshot.stt, engine: event.target.value as TalkStatus['stt']['engine'] } })}>
-          <option value="auto">auto</option>
-          <option value="web">web</option>
-          <option value="funasr">funasr</option>
-          <option value="whisper">whisper</option>
-        </select>
-      </label>
-      <label>
-        {t('ttsEngine')}
-        <select value={ttsEngine} onChange={event => setSnapshot({ ...snapshot, tts: { ...snapshot.tts, engine: event.target.value as TalkStatus['tts']['engine'] } })}>
-          <option value="auto">auto</option>
-          <option value="browser">browser</option>
-          <option value="edge-tts">edge-tts</option>
-          <option value="macos">macos</option>
+        {t('engine')}
+        <select value={engine} onChange={event => setEngine(event.target.value as TalkStatus['engine'])}>
           <option value="minimax">minimax</option>
           <option value="mlx">mlx</option>
-          <option value="piper">piper</option>
         </select>
       </label>
       <label>
-        {t('language')}
-        <input type="text" value={language} onChange={event => setSnapshot({ ...snapshot, stt: { ...snapshot.stt, language: event.target.value } })} />
+        {t('voiceId')}
+        <input type="text" value={voiceId} onChange={event => setVoiceId(event.target.value)} />
       </label>
       <div className="row">
-        <input type="checkbox" checked={snapshot.announce.enabled} onChange={event => setSnapshot({ ...snapshot, announce: { ...snapshot.announce, enabled: event.target.checked } })} />
-        {t('announceEnabled')}
-      </div>
-      <div className="row">
-        <input type="checkbox" checked={snapshot.announce.onTurnEnd} onChange={event => setSnapshot({ ...snapshot, announce: { ...snapshot.announce, onTurnEnd: event.target.checked } })} />
-        {t('announceOnTurnEnd')}
-      </div>
-      <div className="row">
-        <input type="checkbox" checked={snapshot.announce.onApproval} onChange={event => setSnapshot({ ...snapshot, announce: { ...snapshot.announce, onApproval: event.target.checked } })} />
-        {t('announceOnApproval')}
-      </div>
-      <div className="row">
-        <input type="checkbox" checked={snapshot.announce.onError} onChange={event => setSnapshot({ ...snapshot, announce: { ...snapshot.announce, onError: event.target.checked } })} />
-        {t('announceOnError')}
-      </div>
-      <div className="row">
-        <input type="checkbox" checked={snapshot.autoReply.enabled} onChange={event => setSnapshot({ ...snapshot, autoReply: { ...snapshot.autoReply, enabled: event.target.checked } })} />
+        <input type="checkbox" checked={autoReplyEnabled} onChange={event => setAutoReplyEnabled(event.target.checked)} />
         {t('autoReplyEnabled')}
       </div>
-      <div className="row">
-        <input type="checkbox" checked={snapshot.interrupt} onChange={event => setSnapshot({ ...snapshot, interrupt: event.target.checked })} />
-        {t('interrupt')}
-      </div>
       <button type="button" onClick={save}>{t('save')}</button>
-      {note !== undefined && <div className="note">{note}</div>}
-      {failed && <div className="note">{t('saveFailed')}</div>}
+      {note !== undefined ? <div className="note">{note}</div> : null}
+      {failed ? <div className="note">{t('saveFailed')}</div> : null}
     </div>
   )
 }
