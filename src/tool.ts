@@ -80,7 +80,7 @@ export function renderSpeak(args: { text: string }, value: {
 export function speakTool(service: TalkService, maxChars: number) {
   return defineTool({
     name: 'speak',
-    description: 'Speak text aloud to the user through the configured text-to-speech engine (browser voice, edge-tts, or piper). Use it for audible replies. The audio plays in the browser; with a local engine (edge-tts/piper) it is also written to a file whose absolute path is returned in audioPath and can be passed to another tool that takes a file path. The session log records what was spoken.',
+    description: 'Speak text aloud to the user through the configured text-to-speech engine (browser voice, edge-tts, piper, or the macOS system voice). Use it for audible replies. The audio plays in the browser; with a local engine (edge-tts/piper/macos) it is also written to a file whose absolute path is returned in audioPath and can be passed to another tool that takes a file path. The session log records what was spoken.',
     parameters: {
       text: {
         type: 'string',
@@ -89,7 +89,7 @@ export function speakTool(service: TalkService, maxChars: number) {
       },
       engine: {
         type: 'string',
-        enum: ['auto', 'browser', 'edge-tts', 'piper'],
+        enum: ['auto', 'browser', 'edge-tts', 'macos', 'piper'],
         description: 'TTS engine override; default is the configured engine.',
       },
       voice: {

@@ -121,6 +121,50 @@ describe('speak tool', () => {
     expect(harness.subprocess.spawns.length).toBeGreaterThan(0)
   })
 
+  it.skipIf(process.platform !== 'darwin')('synthesizes through the macOS say engine and exports a wav', async () => {
+    await withKnownSpeechVocabulary(async () => {
+      const harness = await mountHarness()
+      harness.subprocess.nextSynthBytes = 'RIFF-fake-macos-audio'
+      const result = await callTool(harness, { text: '你好', engine: 'macos', interrupt: false })
+      expect(result.isError).toBe(false)
+      if (result.isError) return
+      const value = result.value as {
+        spoken?: boolean
+        engine?: string
+        audioBytes?: number
+        audioPath?: string
+        audioExport?: string
+      }
+      expect(value.spoken).toBe(true)
+      expect(value.engine).toBe('macos')
+      expect(value.audioBytes).toBe('RIFF-fake-macos-audio'.length)
+      expect(value.audioExport).toBe('file')
+      expect(value.audioPath?.endsWith('.wav')).toBe(true)
+      // Two spawns: the installed-voice table first, then the synthesis itself.
+      const saySpawn = harness.subprocess.spawns.at(-1)
+      expect(saySpawn?.argv[0]).toBe('/usr/bin/say')
+      expect(saySpawn?.argv).toContain('--file-format=WAVE')
+      expect(saySpawn?.argv).toContain('--data-format=LEI16@22050')
+      const stdin = (saySpawn?.stdio as unknown as { stdin?: { data?: string } } | undefined)?.stdin
+      expect(stdin?.data).toBe('你好')
+      const speech = speechEventsOf(harness.session).at(-1)?.data as { engine?: string; audioBytes?: number } | undefined
+      expect(speech?.engine).toBe('macos')
+      expect(speech?.audioBytes).toBe('RIFF-fake-macos-audio'.length)
+    })
+  })
+
+  it('falls back to the browser voice when the macos engine cannot run', async () => {
+    const harness = await mountHarness()
+    harness.subprocess.nextExitCode = 1
+    harness.subprocess.nextStderr = 'say exploded'
+    const result = await callTool(harness, { text: 'hello', engine: 'macos', interrupt: false })
+    expect(result.isError).toBe(false)
+    if (result.isError) return
+    const value = result.value as { engine?: string; error?: string }
+    expect(value.engine).toBe('browser')
+    expect(value.error).toContain('macos')
+  })
+
   it('refuses a hostile engine value at the schema boundary', async () => {
     const harness = await mountHarness()
     const result = await callTool(harness, { text: 'hi', engine: 'rm-rf' })

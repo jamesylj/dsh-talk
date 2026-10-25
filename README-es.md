@@ -74,7 +74,7 @@ Pulsa el micrófono, habla y la respuesta se lee en voz alta — hablar interrum
 
 `dsh-talk` cierra el bucle de voz en ambos sentidos:
 
-- **Herramienta `speak`** — el agente lee sus respuestas en voz alta. Motores TTS: voz del navegador, `edge-tts` (voces neuronales en red) o `piper` (local). El audio se reproduce en el navegador; con un motor local también se escribe en un archivo y el resultado de la herramienta lleva su ruta absoluta (`audioPath`) para que otros herramientas la consuman; en los hosts que pueden transportarlo, el registro de sesión guarda la locución saneada (ver Límites de seguridad).
+- **Herramienta `speak`** — el agente lee sus respuestas en voz alta. Motores TTS: voz del navegador, `edge-tts` (voces neuronales en red), `piper` (local) o la voz del sistema macOS mediante `/usr/bin/say` (local y sin conexión). El audio se reproduce en el navegador; con un motor local también se escribe en un archivo y el resultado de la herramienta lleva su ruta absoluta (`audioPath`) para que otros herramientas la consuman; en los hosts que pueden transportarlo, el registro de sesión guarda la locución saneada (ver Límites de seguridad).
 - **Botón de micrófono** — pulsa, habla y la transcripción aterriza en la caja de entrada (o se envía directamente). Motores STT: Web Speech del navegador (con resultados intermedios), un servidor HTTP FunASR o `whisper.cpp` local.
 - **Hablar interrumpe** — empezar a hablar detiene la reproducción (canal client→host sobre el espacio `talk`).
 - **Anuncios de eventos** — fin de turno, aprobaciones pendientes (seguro en cascada: nunca bloquea la puerta) y errores, con interruptor de silencio y frases configurables.
@@ -184,8 +184,11 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 | `stt.silenceFinaliseMs` | `4000` | Detener Web Speech continuo tras estos milisegundos sin voz (500..15000) |
 | `stt.funasr.url` | *(ninguna)* | Endpoint de inferencia FunASR; obligatorio con el motor `funasr`; un valor vacío cuenta como no configurado |
 | `stt.whisper.modelPath` | *(ninguna)* | Modelo whisper.cpp; obligatorio con el motor `whisper`; un valor vacío cuenta como no configurado |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `piper`; auto prefiere piper, luego edge-tts, luego la voz del navegador |
-| `tts.rate` | `0` | Desplazamiento de velocidad en porcentaje (-50..50) para edge-tts/piper |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`; auto prefiere piper, luego edge-tts, luego la voz del navegador; `macos` usa la voz del sistema (solo macOS) |
+| `tts.rate` | `0` | Desplazamiento de velocidad en porcentaje (-50..50) para edge-tts/piper; también escala la velocidad de `say` en macOS |
+| `tts.macos.command` | `/usr/bin/say` | Ejecutable `say` de macOS (local y sin conexión; el motor `macos` solo existe en macOS) |
+| `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Nombre de voz instalada exactamente como lo lista `say -v '?'`; un nombre desconocido se rechaza en vez de usar en silencio la voz por defecto |
+| `tts.macos.rate` | `175` | Velocidad base en palabras por minuto para `say`; `tts.rate` la escala en porcentaje (60..400) |
 | `tts.fallbackToBrowser` | `true` | Caer a la voz del navegador cuando falla un motor local |
 | `tts.browser.voiceName` | *(ninguna)* | Nombre de voz preferido del navegador; si no existe se usa la voz predeterminada |
 | `tts.browser.rate` | `1` | Velocidad de SpeechSynthesis del navegador (0.1..10) |
@@ -224,10 +227,10 @@ Por defecto (`autoReply.enabled: true`), la respuesta final del asistente de un 
 
 ### Exportación a archivo de audio
 
-Cada locución sintetizada por un motor local (`edge-tts`, `piper`) se escribe en un archivo **además** de entrar en la caché en memoria desde la que reproduce el navegador. El motor del navegador sintetiza en el cliente y por tanto no exporta nada: ese estado se **reporta explícitamente**, nunca en silencio.
+Cada locución sintetizada por un motor local (`edge-tts`, `piper`, `macos`) se escribe en un archivo **además** de entrar en la caché en memoria desde la que reproduce el navegador. El motor del navegador sintetiza en el cliente y por tanto no exporta nada: ese estado se **reporta explícitamente**, nunca en silencio.
 
 - **Dónde**: `tts.export.dir`, por defecto `<home>/.dsh-talk/audio` — el directorio propio del plugin. Deliberadamente no es nunca el directorio de trabajo del host, así que jamás contamina un repositorio; una `tts.export.dir` relativa se resuelve bajo el directorio home por el mismo motivo.
-- **Nombres**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) o `.wav` (piper). La marca es UTC, así que los nombres ordenan cronológicamente, y el token procede del id de locución, de modo que un archivo se remonta a su entrada de registro de locución (`dsh-talk/speech`, o `plugin:dsh-talk/speech` en hosts `0.2.1+`). El texto hablado nunca forma parte del nombre.
+- **Nombres**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) o `.wav` (piper/macos). La marca es UTC, así que los nombres ordenan cronológicamente, y el token procede del id de locución, de modo que un archivo se remonta a su entrada de registro de locución (`dsh-talk/speech`, o `plugin:dsh-talk/speech` en hosts `0.2.1+`). El texto hablado nunca forma parte del nombre.
 - **Limpieza**: acotada en cada escritura, primero por edad y después por cantidad. Se eliminan los archivos anteriores a `tts.export.maxAgeMinutes` (por defecto 1440 = 24 h) y luego los más antiguos hasta que el directorio no supere `tts.export.maxFiles` (por defecto 20, contando el recién escrito). La purga solo elimina nombres que coinciden con el patrón `speech-…` de este plugin, así que nunca toca otros archivos de un directorio compartido. Con los valores por defecto el directorio guarda como máximo 20 archivos (unos pocos MB) y nada de más de un día.
 - **Fallo**: exportar es un añadido a la locución, nunca una condición previa. Si el directorio no se puede crear o escribir, la locución suena igual y el resultado reporta `audioExport: "failed"` con el motivo; los fallos de purga se ignoran y se reintentan en la siguiente escritura.
 - **Ruta visible para el modelo**: el valor canónico de la herramienta `speak` lleva `audioPath` (más `audioExport` y, cuando no hay archivo, `exportNote`), y la misma ruta aparece en el texto renderizado — así el agente puede pasarla directamente a otra herramienta que tome un archivo, por ejemplo el argumento de archivo de un plugin de mensajería. Los anuncios de eventos (fin de turno, aprobación, error) se sintetizan por la misma canalización y se exportan igual, con los mismos límites.
@@ -237,7 +240,7 @@ Cada locución sintetizada por un motor local (`edge-tts`, `piper`) se escribe e
 
 | Superficie | Tipo | Notas |
 |---|---|---|
-| `speak` | herramienta | Lee texto en voz alta (browser/edge-tts/piper); overrides de motor/voz por llamada; resultado JSON canónico |
+| `speak` | herramienta | Lee texto en voz alta (browser/edge-tts/macos/piper); overrides de motor/voz por llamada; resultado JSON canónico |
 | botón de micrófono | slot `conversation.input.left` | Grabar → transcribir → rellenar borrador (o enviar); hablar interrumpe al pulsar |
 | pestaña de ajustes | `settings.plugins.tab` (id `talk`) | Motores/idioma/anuncios/lectura automática; guardado append-only |
 | `talk:*` | Typert Remote | `status`, `audio`, `transcribe`, `applySettings`, `interrupt` (espacio del host) |
@@ -259,7 +262,7 @@ Cada locución sintetizada por un motor local (`edge-tts`, `piper`) se escribe e
 ## Limitaciones conocidas
 
 - **Soporte de navegador**: Web Speech y MediaRecorder se detectan por capacidades; sin ellos el botón se desactiva y los motores del host (FunASR/whisper.cpp) pueden transcribir si están configurados.
-- **Los motores locales se instalan aparte**: los ejecutables y modelos de `edge-tts`, `piper` y `whisper.cpp` deben instalarse por separado.
+- **Los motores locales se instalan aparte**: los ejecutables y modelos de `edge-tts`, `piper` y `whisper.cpp` deben instalarse por separado; el motor `macos` solo necesita el `/usr/bin/say` del sistema.
 - **edge-tts falla con 403 (`WSServerHandshakeError`)** — el servicio rechaza las versiones antiguas; actualiza a edge-tts ≥ 7.3.1 (un venv dedicado sirve) y apunta `tts.edgeTts.command` a su ruta absoluta.
 - **Los archivos de audio requieren un motor local**: la voz del navegador sintetiza en el cliente, así que allí `speak` no devuelve `audioPath` (el resultado lo dice explícitamente), y un motor local que falla y cae al navegador tampoco deja archivo. Los archivos exportados viven en el directorio acotado del propio plugin — ver Exportación a archivo de audio para ubicación, nombres y limpieza.
 - **Formato de grabación**: el navegador graba con su códec nativo de MediaRecorder; whisper.cpp puede requerir una grabadora WAV o una conversión en el servidor.

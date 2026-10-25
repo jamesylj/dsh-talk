@@ -65,7 +65,7 @@ DeepSeek Harness 的 voice-first 会话闭环：对它说话，听它回答。
 
 `dsh-talk` 双向闭合语音环路：
 
-- **`speak` 工具** —— agent 朗读自己的回复。TTS 引擎：浏览器语音、`edge-tts`（网络神经语音）或 `piper`（本地）。音频在浏览器播放；使用本地引擎时还会落盘为文件，工具结果携带其绝对路径（`audioPath`）供其它工具使用；在能够承载该事件的宿主上，会话日志记录脱敏后的朗读内容（见安全边界）。
+- **`speak` 工具** —— agent 朗读自己的回复。TTS 引擎：浏览器语音、`edge-tts`（网络神经语音）、`piper`（本地）或 macOS 系统语音（通过 `/usr/bin/say`，本地离线）。音频在浏览器播放；使用本地引擎时还会落盘为文件，工具结果携带其绝对路径（`audioPath`）供其它工具使用；在能够承载该事件的宿主上，会话日志记录脱敏后的朗读内容（见安全边界）。
 - **输入框麦克风按钮** —— 按下说话，转写文本自动回填输入框（或直接提交）。STT 引擎：浏览器 Web Speech（含中间结果）、FunASR HTTP 服务或本地 `whisper.cpp`。
 - **说话即打断** —— 开始说话即停止当前播报（经 client→host 的 `talk` Remote 通道）。
 - **事件播报** —— 回合完成、待审批（waterfall 安全：绝不阻塞门禁）与出错，带静音开关与可配话术。
@@ -192,8 +192,11 @@ Error: dsh-talk: speak text must not be empty
 | `stt.silenceFinaliseMs` | `4000` | 连续 Web Speech 在没有语音活动达到此毫秒数后停止（500..15000） |
 | `stt.funasr.url` | *(无)* | FunASR 推理端点；引擎为 `funasr` 时必填；空值视为未配置 |
 | `stt.whisper.modelPath` | *(无)* | whisper.cpp 模型；引擎为 `whisper` 时必填；空值视为未配置 |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `piper`；auto 优先 piper，其次 edge-tts，最后浏览器语音 |
-| `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50） |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`；auto 优先 piper，其次 edge-tts，最后浏览器语音；`macos` 使用系统语音（仅 macOS） |
+| `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50）；同时按百分比缩放 macOS `say` 的语速 |
+| `tts.macos.command` | `/usr/bin/say` | macOS `say` 可执行文件（本地离线；`macos` 引擎仅 macOS 可用） |
+| `tts.macos.voice` | `Eddy (中文（中国大陆）)` | 已安装语音名，须与 `say -v '?'` 列出的完全一致；未知名称会被拒绝，而不是静默改用系统默认语音 |
+| `tts.macos.rate` | `175` | `say` 的基础语速（词/分钟）；`tts.rate` 按百分比缩放（60..400） |
 | `tts.fallbackToBrowser` | `true` | 本地引擎失败时回退浏览器语音 |
 | `tts.browser.voiceName` | *(无)* | 首选浏览器语音名称；未找到时使用平台默认语音 |
 | `tts.browser.rate` | `1` | 浏览器 SpeechSynthesis 语速（0.1..10） |
@@ -232,10 +235,10 @@ Error: dsh-talk: speak text must not be empty
 
 ### 音频文件导出
 
-由本地引擎（`edge-tts`、`piper`）合成的每次朗读，除了进入浏览器播放用的内存缓存，还会**额外**写入一个文件。浏览器引擎在客户端合成，因此不导出任何文件 —— 这一状态会**明确报告**，绝不静默。
+由本地引擎（`edge-tts`、`piper`、`macos`）合成的每次朗读，除了进入浏览器播放用的内存缓存，还会**额外**写入一个文件。浏览器引擎在客户端合成，因此不导出任何文件 —— 这一状态会**明确报告**，绝不静默。
 
 - **位置**：`tts.export.dir`，默认 `<home>/.dsh-talk/audio`（本插件自己的目录）。它刻意不用宿主的工作目录，因此绝不会污染代码仓；相对路径同样按家目录解析。
-- **命名**：`speech-<YYYYMMDD>T<HHMMSS>Z-<8 位十六进制>.mp3`（edge-tts）或 `.wav`（piper）。时间戳为 UTC，故按名排序即按时间排序；后缀取自 utterance id，可回溯到对应的朗读日志条目（`dsh-talk/speech`，`0.2.1+` 宿主上为 `plugin:dsh-talk/speech`）。朗读文本绝不进入文件名。
+- **命名**：`speech-<YYYYMMDD>T<HHMMSS>Z-<8 位十六进制>.mp3`（edge-tts）或 `.wav`（piper/macos）。时间戳为 UTC，故按名排序即按时间排序；后缀取自 utterance id，可回溯到对应的朗读日志条目（`dsh-talk/speech`，`0.2.1+` 宿主上为 `plugin:dsh-talk/speech`）。朗读文本绝不进入文件名。
 - **清理**：每次写入都重新收敛，先按时间、再按数量。早于 `tts.export.maxAgeMinutes`（默认 1440 = 24 小时）的文件被删除，随后从最旧的开始删除，直到目录内不超过 `tts.export.maxFiles` 个（默认 20，含刚写入的那个）。清理只删除匹配本插件 `speech-…` 命名的文件，共享目录中的其它文件绝不触碰。按默认值，目录最多 20 个文件（数 MB），且不会有超过一天的旧文件。
 - **失败**：导出是朗读的附加动作，绝不是前提。目录无法创建或写入时，朗读照常播放，结果里报告 `audioExport: "failed"` 及原因；清理失败被忽略，下次写入时重试。
 - **模型可见的路径**：`speak` 工具的规范值携带 `audioPath`（以及 `audioExport`，无文件时还有 `exportNote`），渲染给模型的结果文本里也有同一路径 —— 因此 agent 可以直接把它交给需要文件路径的其它工具，例如某个消息插件的文件参数。事件播报（回合完成、审批、出错）走同一条流水线，也同样导出，并受同样的上限约束。
@@ -245,7 +248,7 @@ Error: dsh-talk: speak text must not be empty
 
 | 界面 | 类型 | 说明 |
 |---|---|---|
-| `speak` | 工具 | 朗读文本（browser/edge-tts/piper）；支持单次引擎/音色覆盖；规范 JSON 结果 |
+| `speak` | 工具 | 朗读文本（browser/edge-tts/macos/piper）；支持单次引擎/音色覆盖；规范 JSON 结果 |
 | 麦克风按钮 | `conversation.input.left` 槽位 | 录音 → 转写 → 回填草稿（或提交）；按下即打断 |
 | 设置页签 | `settings.plugins.tab`（id `talk`） | 引擎/语言/播报/自动朗读开关；追加式保存 |
 | `talk:*` | Typert Remote | `status`、`audio`、`transcribe`、`applySettings`、`interrupt`（宿主命名空间） |
@@ -267,7 +270,7 @@ Error: dsh-talk: speak text must not be empty
 ## 已知限制
 
 - **浏览器支持**：Web Speech 与 MediaRecorder 均特性检测；不可用时麦克风按钮自动禁用，配置了宿主引擎（FunASR/whisper.cpp）仍可转写。
-- **本地引擎需自行安装**：`edge-tts`、`piper`、`whisper.cpp` 可执行文件与模型需单独安装。
+- **本地引擎需自行安装**：`edge-tts`、`piper`、`whisper.cpp` 可执行文件与模型需单独安装；`macos` 引擎只需要系统自带的 `/usr/bin/say`。
 - **edge-tts 报 403（`WSServerHandshakeError`）** —— 旧版 edge-tts 会被服务端拒绝；升级到 edge-tts ≥ 7.3.1（可放在独立 venv），并把 `tts.edgeTts.command` 指向其绝对路径。
 - **音频文件需要本地引擎**：浏览器语音在客户端合成，因此那里 `speak` 不返回 `audioPath`（结果中会明确说明）；本地引擎失败并回退到浏览器时同样没有文件。导出文件位于插件自有的受限目录 —— 位置、命名与清理规则见「音频文件导出」。
 - **录音格式**：浏览器按其原生 MediaRecorder 编解码器录音；whisper.cpp 可能要求 WAV 录音配置或服务端转换。

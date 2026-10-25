@@ -74,7 +74,7 @@ Press the mic, speak, and the reply is spoken back — with speak-to-interrupt.
 
 `dsh-talk` closes the voice loop in both directions:
 
-- **`speak` tool** — the agent speaks its replies aloud. TTS engines: the browser voice, `edge-tts` (network neural voices), or `piper` (local). Audio plays in the browser; with a local engine it is also written to a file and the tool result carries the absolute path (`audioPath`) for other tools to consume; on hosts that can carry it, the session log records the sanitized utterance (see Security boundaries).
+- **`speak` tool** — the agent speaks its replies aloud. TTS engines: the browser voice, `edge-tts` (network neural voices), `piper` (local), or the macOS system voice through `/usr/bin/say` (local and offline). Audio plays in the browser; with a local engine it is also written to a file and the tool result carries the absolute path (`audioPath`) for other tools to consume; on hosts that can carry it, the session log records the sanitized utterance (see Security boundaries).
 - **Composer mic button** — press it, speak, and the transcription lands in the input box (or submits directly). STT engines: the browser's Web Speech (interim results included), a FunASR HTTP server, or local `whisper.cpp`.
 - **Speak-to-interrupt** — starting to talk stops whatever is playing (client → host over the `talk` Remote namespace).
 - **Event announcements** — turn completion, pending approvals (waterfall-safe: never blocks the gate), and errors, with a mute switch and configurable phrases.
@@ -193,8 +193,11 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). `cord
 | `stt.silenceFinaliseMs` | `4000` | Stop continuous Web Speech recognition after this many milliseconds without speech (500..15000) |
 | `stt.funasr.url` | *(none)* | FunASR inference endpoint; required when the engine is `funasr`; an empty value counts as not configured |
 | `stt.whisper.modelPath` | *(none)* | whisper.cpp model; required when the engine is `whisper`; an empty value counts as not configured |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `piper`; auto prefers piper, then edge-tts, then the browser voice |
-| `tts.rate` | `0` | Rate offset in percent (-50..50) for edge-tts/piper |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`; auto prefers piper, then edge-tts, then the browser voice; `macos` uses the system voice (macOS hosts only) |
+| `tts.rate` | `0` | Rate offset in percent (-50..50) for edge-tts/piper; also scales the macOS `say` rate |
+| `tts.macos.command` | `/usr/bin/say` | macOS `say` executable (local and offline; the `macos` engine only exists on macOS) |
+| `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Installed voice name exactly as `say -v '?'` lists it; an unknown name is rejected instead of silently using the system default |
+| `tts.macos.rate` | `175` | Baseline words per minute for `say`; `tts.rate` scales it by percent (60..400) |
 | `tts.fallbackToBrowser` | `true` | Fall back to the browser voice when a local engine fails |
 | `tts.browser.voiceName` | *(none)* | Preferred browser voice name; an unknown name uses the platform default |
 | `tts.browser.rate` | `1` | Browser SpeechSynthesis rate (0.1..10) |
@@ -233,10 +236,10 @@ By default (`autoReply.enabled: true`) the final assistant reply of a completed 
 
 ### Audio file export
 
-Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written to a file **in addition to** the in-memory cache the browser plays from. The browser engine synthesizes on the client and therefore exports nothing — that state is reported explicitly, never silently.
+Every utterance synthesized by a local engine (`edge-tts`, `piper`, `macos`) is written to a file **in addition to** the in-memory cache the browser plays from. The browser engine synthesizes on the client and therefore exports nothing — that state is reported explicitly, never silently.
 
 - **Where**: `tts.export.dir`, default `<home>/.dsh-talk/audio` — the plugin's own directory. It is deliberately never the host's working directory, so a repository is never polluted; a relative `tts.export.dir` is resolved under the home directory for the same reason.
-- **Names**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) or `.wav` (piper). The stamp is UTC so names sort chronologically, and the token comes from the utterance id, so a file maps back to its speech log entry (`dsh-talk/speech`, or `plugin:dsh-talk/speech` on `0.2.1+` hosts). The spoken text is never part of a file name.
+- **Names**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) or `.wav` (piper/macos). The stamp is UTC so names sort chronologically, and the token comes from the utterance id, so a file maps back to its speech log entry (`dsh-talk/speech`, or `plugin:dsh-talk/speech` on `0.2.1+` hosts). The spoken text is never part of a file name.
 - **Cleanup**: bounded on every write, age first and count second. Files older than `tts.export.maxAgeMinutes` (default 1440 = 24 h) are removed, then the oldest files are removed until the directory holds at most `tts.export.maxFiles` (default 20, counting the file just written). Pruning only ever unlinks names matching this plugin's own `speech-…` pattern, so other files in a shared directory are never touched. With the defaults the directory holds at most 20 files (~a few MB) and nothing older than a day.
 - **Failure**: exporting is an addition to speech, never a precondition. If the directory cannot be created or written, the utterance still plays and the result reports `audioExport: "failed"` with the reason; pruning failures are ignored and retried on the next write.
 - **Model-visible path**: the `speak` tool's canonical value carries `audioPath` (plus `audioExport` and, when there is no file, `exportNote`), and the same path is in the rendered result text — so the agent can pass it straight to another tool that takes a file, for example a messenger plugin's file argument. Event announcements (turn end, approval, error) are synthesized through the same pipeline and are exported the same way; they are bounded by the same caps.
@@ -246,7 +249,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 
 | Surface | Kind | Notes |
 |---|---|---|
-| `speak` | tool | Speaks text aloud (browser/edge-tts/piper); per-call engine/voice overrides; canonical JSON outcome |
+| `speak` | tool | Speaks text aloud (browser/edge-tts/macos/piper); per-call engine/voice overrides; canonical JSON outcome |
 | mic button | `conversation.input.left` slot | Record → transcribe → fill draft (or submit); speak-to-interrupt on press |
 | settings tab | `settings.plugins.tab` (id `talk`) | Engine/language/announcement/auto-read switches; append-only save |
 | `talk:*` | Typert Remote | `status`, `audio`, `transcribe`, `applySettings`, `interrupt` (host namespace) |
@@ -268,7 +271,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 ## Known limitations
 
 - **Browser support**: Web Speech and MediaRecorder are feature-detected; without them the mic button disables itself and host engines (FunASR/whisper.cpp) can still transcribe when configured.
-- **Local engines are your install**: `edge-tts`, `piper`, and `whisper.cpp` executables and models must be installed separately.
+- **Local engines are your install**: `edge-tts`, `piper`, and `whisper.cpp` executables and models must be installed separately; the `macos` engine only needs the system `/usr/bin/say`.
 - **edge-tts fails with 403 (`WSServerHandshakeError`)** — an outdated edge-tts build is rejected by the service; upgrade to edge-tts ≥ 7.3.1 (a dedicated venv works) and point `tts.edgeTts.command` at its absolute path.
 - **Audio files need a local engine**: the browser voice synthesizes on the client, so `speak` returns no `audioPath` there (the result says so explicitly), and a local engine that fails and falls back to the browser also has no file. Exported files live in the plugin's own bounded directory — see Audio file export for the location, naming, and cleanup rules.
 - **Recording format**: the browser records with its native MediaRecorder codec; whisper.cpp may require a WAV-configured recorder or a server-side conversion for other formats.

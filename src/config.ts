@@ -13,8 +13,8 @@ import { resolveExportDir } from './audio-export.ts'
 /** Speech-to-text engines. `auto` prefers a configured local engine, then Web Speech. */
 export type SttEngine = 'auto' | 'web' | 'funasr' | 'whisper'
 
-/** Text-to-speech engines. `auto` prefers piper, then edge-tts, then the browser voice. */
-export type TtsEngine = 'auto' | 'browser' | 'edge-tts' | 'piper'
+/** Text-to-speech engines. `auto` prefers piper, then edge-tts; `macos` is the system voice. */
+export type TtsEngine = 'auto' | 'browser' | 'edge-tts' | 'macos' | 'piper'
 
 /** Turn-end reasons that can trigger auto-read of the assistant's final reply. */
 export type AutoReplyReason = 'completed' | 'max-tokens'
@@ -45,6 +45,21 @@ export const MAX_AUTO_REPLY_MAX_CHARS = 100_000
 
 /** Turn-end reasons that trigger auto-read by default (frozen: it is the resolver's fallback). */
 export const DEFAULT_AUTO_REPLY_REASONS: readonly AutoReplyReason[] = Object.freeze(['completed', 'max-tokens'])
+
+/** Default macOS `say` executable. */
+export const DEFAULT_MACOS_COMMAND = '/usr/bin/say'
+
+/** Default macOS voice: the zh_CN "Eddy" voice as `say -v '?'` names it. */
+export const DEFAULT_MACOS_VOICE = 'Eddy (中文（中国大陆）)'
+
+/** Default macOS speech-rate anchor in words per minute (`tts.rate` scales it). */
+export const DEFAULT_MACOS_RATE = 175
+
+/** Lower bound for the macOS speech-rate anchor (words per minute). */
+export const MIN_MACOS_RATE = 60
+
+/** Upper bound for the macOS speech-rate anchor (words per minute). */
+export const MAX_MACOS_RATE = 400
 
 /** Default in-memory audio cache cap in bytes (8 MiB). */
 export const DEFAULT_MAX_AUDIO_CACHE_BYTES = 8 * 1024 * 1024
@@ -137,9 +152,19 @@ export interface TtsExportConfig {
   maxAgeMinutes?: number
 }
 
+/** macOS system voice (`say`) engine configuration. */
+export interface TtsMacosConfig {
+  /** `say` executable (default "/usr/bin/say"). */
+  command?: string
+  /** Installed voice name exactly as `say -v '?'` lists it (default "Eddy (中文（中国大陆）)"). */
+  voice?: string
+  /** Baseline speech rate in words per minute; the `tts.rate` percent scales it (default 175, 60..400). */
+  rate?: number
+}
+
 /** Text-to-speech configuration. */
 export interface TtsConfig {
-  /** Engine selection: auto | browser | edge-tts | piper (default auto). */
+  /** Engine selection: auto | browser | edge-tts | macos | piper (default auto). */
   engine?: TtsEngine
   /** Voice name override for the resolved engine; unset = engine default. */
   voice?: string
@@ -170,6 +195,8 @@ export interface TtsConfig {
     /** piper voice model file; required for the piper engine. */
     modelPath?: string
   }
+  /** macOS system voice (`say`, local and offline; macOS hosts only). */
+  macos?: TtsMacosConfig
   /** Exported-audio files: where they go and how the directory is bounded. */
   export?: TtsExportConfig
 }
@@ -281,6 +308,12 @@ export interface ResolvedConfig {
   edgeTtsCommand: string
   /** edge-tts voice name. */
   edgeTtsVoice: string
+  /** macOS `say` executable. */
+  macosCommand: string
+  /** macOS voice name exactly as `say -v '?'` lists it. */
+  macosVoice: string
+  /** macOS speech-rate anchor in words per minute. */
+  macosRate: number
   /** piper executable. */
   piperCommand: string
   /** piper model path, or null. */
@@ -354,7 +387,7 @@ export const Config: z<Config> = z.object({
     }),
   }),
   tts: z.object({
-    engine: z.union(['auto', 'browser', 'edge-tts', 'piper'] as const).default('auto'),
+    engine: z.union(['auto', 'browser', 'edge-tts', 'macos', 'piper'] as const).default('auto'),
     voice: z.string(),
     rate: z.number().min(-50).max(50).default(0),
     fallbackToBrowser: z.boolean().default(true),
@@ -370,6 +403,11 @@ export const Config: z<Config> = z.object({
     piper: z.object({
       command: z.string().default('piper'),
       modelPath: z.string(),
+    }),
+    macos: z.object({
+      command: z.string().default(DEFAULT_MACOS_COMMAND),
+      voice: z.string().default(DEFAULT_MACOS_VOICE),
+      rate: z.number().min(MIN_MACOS_RATE).max(MAX_MACOS_RATE).default(DEFAULT_MACOS_RATE),
     }),
     export: z.object({
       enabled: z.boolean().default(true),
@@ -403,7 +441,7 @@ export const Config: z<Config> = z.object({
 })
 
 const STT_ENGINES = ['auto', 'web', 'funasr', 'whisper'] as const
-const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'piper'] as const
+const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'macos', 'piper'] as const
 const AUTO_REPLY_REASONS = ['completed', 'max-tokens'] as const
 
 function isSttEngine(value: unknown): value is SttEngine {
@@ -534,7 +572,7 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
 
   const ttsEngineRaw = tts.engine ?? 'auto'
   if (!isTtsEngine(ttsEngineRaw)) {
-    throw new Error(`dsh-talk: config.tts.engine must be one of "auto", "browser", "edge-tts", "piper", got ${JSON.stringify(ttsEngineRaw)}`)
+    throw new Error(`dsh-talk: config.tts.engine must be one of "auto", "browser", "edge-tts", "macos", "piper", got ${JSON.stringify(ttsEngineRaw)}`)
   }
   const ttsVoice = nullableNonEmptyStringOf(tts.voice, 'tts.voice')
   const ttsRate = numberOf(tts.rate, 0, -50, 50, 'tts.rate')
@@ -548,6 +586,11 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const piperCommand = stringOf(tts.piper?.command, 'piper', 'tts.piper.command')
   if (piperCommand.length === 0) throw new Error('dsh-talk: config.tts.piper.command must not be empty')
   const piperModelPath = nullableNonEmptyStringOf(tts.piper?.modelPath, 'tts.piper.modelPath')
+  const macosCommand = stringOf(tts.macos?.command, DEFAULT_MACOS_COMMAND, 'tts.macos.command')
+  if (macosCommand.length === 0) throw new Error('dsh-talk: config.tts.macos.command must not be empty')
+  const macosVoice = stringOf(tts.macos?.voice, DEFAULT_MACOS_VOICE, 'tts.macos.voice')
+  if (macosVoice.trim().length === 0) throw new Error('dsh-talk: config.tts.macos.voice must not be empty')
+  const macosRate = numberOf(tts.macos?.rate, DEFAULT_MACOS_RATE, MIN_MACOS_RATE, MAX_MACOS_RATE, 'tts.macos.rate')
   const ttsExportEnabled = booleanOf(tts.export?.enabled, true, 'tts.export.enabled')
   const ttsExportDir = resolveExportDir(tts.export?.dir)
   const ttsExportMaxFiles = numberOf(
@@ -627,6 +670,9 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
     browserPitch,
     edgeTtsCommand,
     edgeTtsVoice,
+    macosCommand,
+    macosVoice,
+    macosRate,
     piperCommand,
     piperModelPath,
     ttsExportEnabled,

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.32] - 2026-10-25
+
+### Added
+
+- **New `macos` TTS engine: the system voice through `/usr/bin/say`.** Local and offline — no network, no separate install: `say -v <voice> -r <wpm> -o <wav> --file-format=WAVE --data-format=LEI16@22050 -f -` synthesizes a 22.05 kHz mono WAV that rides the existing synthesis → in-memory cache → bounded export → client `<audio>` pipeline, so playback, de-duplication, projection, audio export, and the browser fallback are unchanged. New config: `tts.macos.command` (default `/usr/bin/say`), `tts.macos.voice` (default `Eddy (中文（中国大陆）)`, matched exactly against `say -v '?'` — an unknown name fails loud instead of silently using the system default voice), and `tts.macos.rate` (baseline words per minute, default 175, 60..400; `tts.rate` scales it by percent). macOS hosts only: on other platforms the engine fails and falls back exactly like any other local-engine failure.
+
 ## [Unreleased]
 
 ### Fixed

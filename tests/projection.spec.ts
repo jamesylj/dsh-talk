@@ -115,6 +115,24 @@ describe('talk:speech projection', () => {
     expect(talkSpeechProjectionSchema.safeParse({ ...value, pitch: 2.5 }).success).toBe(false)
   })
 
+  it('folds a macOS-engine utterance through the projection', () => {
+    const macosEvent = {
+      seq: 12,
+      type: 'dsh-talk/speech',
+      data: {
+        kind: 'tts',
+        utteranceId: 'u-macos',
+        engine: 'macos',
+        text: '你好。',
+        audioBytes: 4096,
+        reason: 'auto-reply',
+      },
+    } as unknown as SessionEvent
+    const state = applyTalkSpeechProjection(initTalkSpeechProjection(), macosEvent)
+    expect(state?.engine).toBe('macos')
+    expect(talkSpeechProjectionSchema.safeParse(state).success).toBe(true)
+  })
+
   it('folds an ignorable plugin record (0.2.1+ transport) and the auto-reply reason', () => {
     const state = applyTalkSpeechProjection(initTalkSpeechProjection(), pluginRecordEvent(6, 'u-record'))
     expect(state?.utteranceId).toBe('u-record')

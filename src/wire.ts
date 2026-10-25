@@ -30,7 +30,7 @@ function strictWire<T>(typeSymbol: string, schema: T) {
 export const STT_ENGINES = ['auto', 'web', 'funasr', 'whisper'] as const
 
 /** The engines the settings panel may select for text-to-speech. */
-export const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'piper'] as const
+export const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'macos', 'piper'] as const
 
 /** Read-only settings snapshot served by `talk/status`. */
 export interface TalkStatus {
@@ -46,7 +46,7 @@ export interface TalkStatus {
   /** TTS selection and resolved engine. */
   tts: {
     engine: (typeof TTS_ENGINES)[number]
-    resolved: 'browser' | 'edge-tts' | 'piper'
+    resolved: 'browser' | 'edge-tts' | 'macos' | 'piper'
     voice: string | null
     fallbackToBrowser: boolean
     piperModel: string | null
@@ -105,8 +105,8 @@ export const TALK_STATUS_SCHEMA = z.object({
     whisperModel: z.string().nullable(),
   }),
   tts: z.object({
-    engine: z.union([z.literal('auto'), z.literal('browser'), z.literal('edge-tts'), z.literal('piper')]),
-    resolved: z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('piper')]),
+    engine: z.union([z.literal('auto'), z.literal('browser'), z.literal('edge-tts'), z.literal('macos'), z.literal('piper')]),
+    resolved: z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('macos'), z.literal('piper')]),
     voice: z.string().nullable(),
     fallbackToBrowser: z.boolean(),
     piperModel: z.string().nullable(),
@@ -147,14 +147,14 @@ export const TALK_STATUS_SCHEMA = z.object({
 export interface TalkAudio {
   /** The utterance id requested. */
   utteranceId: string
-  /** MIME type: `audio/wav` (piper) or `audio/mpeg` (edge-tts). */
+  /** MIME type: `audio/wav` (piper/macos) or `audio/mpeg` (edge-tts). */
   mime: string
   /** Audio bytes as base64. */
   data: string
   /** The spoken text (sanitized). */
   text: string
   /** Engine that produced the audio. */
-  engine: 'edge-tts' | 'piper'
+  engine: 'edge-tts' | 'macos' | 'piper'
 }
 
 /** Strict wire schema for {@link TalkAudio}. */
@@ -163,7 +163,7 @@ export const TALK_AUDIO_SCHEMA = z.object({
   mime: z.string(),
   data: z.string(),
   text: z.string(),
-  engine: z.union([z.literal('edge-tts'), z.literal('piper')]),
+  engine: z.union([z.literal('edge-tts'), z.literal('macos'), z.literal('piper')]),
 })
 
 /** Result of `talk/transcribe`: the recognized text. */
@@ -208,7 +208,7 @@ export interface TalkSettingsInput {
 /** Strict wire schema for {@link TalkSettingsInput}. */
 export const TALK_SETTINGS_INPUT_SCHEMA = z.object({
   sttEngine: z.union([z.literal('auto'), z.literal('web'), z.literal('funasr'), z.literal('whisper')]).optional(),
-  ttsEngine: z.union([z.literal('auto'), z.literal('browser'), z.literal('edge-tts'), z.literal('piper')]).optional(),
+  ttsEngine: z.union([z.literal('auto'), z.literal('browser'), z.literal('edge-tts'), z.literal('macos'), z.literal('piper')]).optional(),
   language: z.string().optional(),
   announceEnabled: z.boolean().optional(),
   onTurnEnd: z.boolean().optional(),
@@ -284,7 +284,7 @@ export interface TalkLatest {
 export const TALK_LATEST_SCHEMA = z.object({
   sessionId: z.string(),
   utteranceId: z.string(),
-  engine: z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('piper')]),
+  engine: z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('macos'), z.literal('piper')]),
   text: z.string(),
   audioBytes: z.number().int(),
   reason: SPEECH_REASON_SCHEMA,

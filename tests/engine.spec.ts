@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../src/config.ts'
-import { edgeTtsArgv, piperSpec, whisperArgv } from '../src/engine.ts'
+import { edgeTtsArgv, macosRateWpm, macosSaySpec, parseMacosVoiceList, piperSpec, whisperArgv } from '../src/engine.ts'
 
 describe('edgeTtsArgv', () => {
   it('builds the full edge-tts argv with a positive rate', () => {
@@ -57,3 +57,57 @@ describe('whisperArgv', () => {
     expect(argv).not.toContain('--language')
   })
 })
+
+describe('macosSaySpec', () => {
+  it('builds the say argv for a WAVE file and passes the text on stdin', () => {
+    const resolved = resolveConfig({ tts: { rate: 20, macos: { voice: 'Tingting' } } })
+    const spec = macosSaySpec(resolved, '你好', '/tmp/out.wav')
+    expect(spec.argv).toEqual([
+      '/usr/bin/say',
+      '-v', 'Tingting',
+      '-r', '210',
+      '-o', '/tmp/out.wav',
+      '--file-format=WAVE',
+      '--data-format=LEI16@22050',
+      '-f', '-',
+    ])
+    expect(spec.stdin).toBe('你好')
+  })
+
+  it('defaults to the Eddy zh_CN voice and the 175 wpm anchor', () => {
+    const spec = macosSaySpec(resolveConfig({}), 'hi', '/tmp/out.wav')
+    expect(spec.argv).toContain('Eddy (中文（中国大陆）)')
+    expect(spec.argv[spec.argv.indexOf('-r') + 1]).toBe('175')
+  })
+
+  it('lets a per-call voice override win over the configured macOS voice', () => {
+    const resolved = resolveConfig({ tts: { macos: { voice: 'Tingting' } } })
+    const spec = macosSaySpec(resolved, 'hi', '/tmp/out.wav', 'Meijia')
+    expect(spec.argv[spec.argv.indexOf('-v') + 1]).toBe('Meijia')
+  })
+
+  it('clamps the mapped words per minute to a rate say accepts', () => {
+    expect(macosRateWpm(resolveConfig({ tts: { macos: { rate: 400 }, rate: 50 } }))).toBe(600)
+    expect(macosRateWpm(resolveConfig({ tts: { macos: { rate: 60 }, rate: -50 } }))).toBe(40)
+    expect(macosRateWpm(resolveConfig({ tts: { macos: { rate: 175 }, rate: -50 } }))).toBe(88)
+  })
+})
+
+describe('parseMacosVoiceList', () => {
+  it('extracts names that contain spaces and CJK parentheses', () => {
+    const output = [
+      'Albert              en_US    # Hello! My name is Albert.',
+      'Eddy (中文（中国大陆）)     zh_CN    # 你好！我叫Eddy。',
+      'Grandma (西班牙语（西班牙）) es_ES    # ¡Hola! Me llamo Grandma.',
+      'Tingting            zh_CN    # 你好！我叫婷婷。',
+      '',
+    ].join('\n')
+    expect(parseMacosVoiceList(output)).toEqual([
+      'Albert',
+      'Eddy (中文（中国大陆）)',
+      'Grandma (西班牙语（西班牙）)',
+      'Tingting',
+    ])
+  })
+})
+

@@ -51,8 +51,10 @@
             language: ''
         # Text-to-speech.
         tts:
-          # auto | browser | edge-tts | piper — auto prefers piper (configured
-          # model), then edge-tts, then the browser voice.
+          # auto | browser | edge-tts | macos | piper — auto prefers piper
+          # (configured model), then edge-tts, then the browser voice. `macos`
+          # uses the system voice through /usr/bin/say (local, offline,
+          # macOS hosts only).
           engine: auto
           # Voice name override; unset = engine default.
           voice: ''
@@ -77,6 +79,15 @@
             command: piper
             # piper voice model file; required for the piper engine.
             modelPath: ''
+          macos:
+            # macOS `say` executable. The macos engine synthesizes locally and
+            # offline; an unknown voice name is rejected instead of silently
+            # falling back to the system default voice.
+            command: /usr/bin/say
+            # Installed voice name exactly as `say -v '?'` lists it.
+            voice: "Eddy (中文（中国大陆）)"
+            # Baseline words per minute; `rate` above scales it as a percent.
+            rate: 175
           # Exported audio files: every locally synthesized utterance is also
           # written to a file whose absolute path the speak tool returns as
           # audioPath (hand it to another tool's file argument). The browser

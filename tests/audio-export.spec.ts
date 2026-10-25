@@ -78,6 +78,7 @@ describe('exportFileName', () => {
     expect(name).toBe('speech-20261012T153012Z-3f9a1c7d.mp3')
     expect(EXPORT_FILE_PATTERN.test(name)).toBe(true)
     expect(exportFileName('piper', new Date('2026-10-12T15:30:12.345Z'), '3f9a1c7d-0000')).toBe('speech-20261012T153012Z-3f9a1c7d.wav')
+    expect(exportFileName('macos', new Date('2026-10-12T15:30:12.345Z'), '3f9a1c7d-0000')).toBe('speech-20261012T153012Z-3f9a1c7d.wav')
   })
 
   it('never derives a name from the spoken text and pads a short token', () => {

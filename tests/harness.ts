@@ -38,7 +38,7 @@ export class FakeSubprocessRuntime extends SubprocessRuntime {
   nextExitCode = 0
   /** Scripted stderr text for the next spawn. */
   nextStderr = ''
-  /** When set, a spawn whose argv carries `--write-media <path>` writes these bytes there (successful local synthesis). */
+  /** When set, a spawn whose argv names an audio output (`--write-media <path>` or `-o <path>`) writes these bytes there (successful local synthesis). */
   nextSynthBytes: string | null = null
   /** Every spawn spec recorded. */
   spawns: SubprocessSpawnSpec[] = []
@@ -59,9 +59,13 @@ export class FakeSubprocessRuntime extends SubprocessRuntime {
     this.spawns.push(spec)
     let mediaWrite: Promise<void> = Promise.resolve()
     if (this.nextSynthBytes !== null) {
-      const marker = spec.argv.indexOf('--write-media')
-      if (marker !== -1 && marker + 1 < spec.argv.length) {
+      const markers = ['--write-media', '-o']
+      for (const flag of markers) {
+        const marker = spec.argv.indexOf(flag)
+        if (marker === -1 || marker + 1 >= spec.argv.length) continue
+        // `say -v '?'` lists voices and names no output; only an output flag writes bytes.
         mediaWrite = writeFile(spec.argv[marker + 1] as string, this.nextSynthBytes, 'binary')
+        break
       }
     }
     const stdout = this.nextStdout

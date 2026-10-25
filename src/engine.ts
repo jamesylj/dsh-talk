@@ -9,6 +9,8 @@
  *   --write-media <out.mp3>` (network-backed neural voices).
  * - piper: `piper --model <model.onnx> --output_file <out.wav>
  *   --length_scale <scale>`, text on stdin.
+ * - macOS `say`: `say -v <voice> -r <wpm> -o <out.wav> --file-format=WAVE
+ *   --data-format=LEI16@22050 -f -`, text on stdin (local, offline, macOS only).
  * - whisper.cpp: `whisper-cli --model <ggml> --file <in.wav> --output-txt
  *   --output-file <base> [--language <tag>]`, transcript read from `<base>.txt`.
  * - FunASR: multipart POST `{url}/v1/audio/transcriptions` (file + optional
@@ -21,6 +23,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import type { LocalTtsEngine } from './audio-export.ts'
 import type { ResolvedConfig } from './config.ts'
 import { sanitizeText } from './sanitize.ts'
 
@@ -88,6 +91,124 @@ export function piperSpec(resolved: ResolvedConfig, outPath: string): { readonly
       '--length_scale', lengthScale.toFixed(3),
     ],
     stdin: '',
+  }
+}
+
+/**
+ * Lower bound applied to the mapped macOS speech rate (words per minute).
+ */
+const MACOS_RATE_MIN = 40
+
+/** Upper bound applied to the mapped macOS speech rate (words per minute). */
+const MACOS_RATE_MAX = 600
+
+/**
+ * Map the percent rate offset onto a macOS `say` words-per-minute rate:
+ * `tts.rate` scales the configured `tts.macos.rate` anchor linearly
+ * (`+20` = 1.2x), clamped to a rate `say` accepts.
+ *
+ * @param resolved - resolved config.
+ * @returns the clamped words-per-minute rate.
+ */
+export function macosRateWpm(resolved: ResolvedConfig): number {
+  const scaled = resolved.macosRate * (1 + resolved.ttsRate / 100)
+  return Math.min(MACOS_RATE_MAX, Math.max(MACOS_RATE_MIN, Math.round(scaled)))
+}
+
+/**
+ * Build the macOS `say` command line and its stdin payload. The text rides on
+ * stdin (`-f -`) so an utterance can never be misread as a flag, and WAVE is
+ * requested explicitly: `say`'s default AIFF is not dependable in the
+ * browser's `<audio>` element, and plain `-o x.wav` without `--file-format`
+ * fails outright.
+ *
+ * @param resolved - resolved config.
+ * @param text - text to speak (sanitized by the caller).
+ * @param outPath - absolute wav output path.
+ * @param voiceOverride - per-call voice name; unset = the configured macOS voice.
+ * @returns the argv and the stdin text.
+ */
+export function macosSaySpec(
+  resolved: ResolvedConfig,
+  text: string,
+  outPath: string,
+  voiceOverride?: string,
+): { readonly argv: readonly string[]; readonly stdin: string } {
+  return {
+    argv: [
+      resolved.macosCommand,
+      '-v', voiceOverride ?? resolved.macosVoice,
+      '-r', String(macosRateWpm(resolved)),
+      '-o', outPath,
+      '--file-format=WAVE',
+      '--data-format=LEI16@22050',
+      '-f', '-',
+    ],
+    stdin: text,
+  }
+}
+
+/**
+ * Parse the `say -v '?'` voice table into installed voice names. Each line is
+ * `<name><whitespace><locale><whitespace># <example>`; names may contain
+ * spaces and CJK parentheses, so the locale column is the reliable separator.
+ *
+ * @param output - stdout of `say -v '?'`.
+ * @returns the installed voice names (empty when nothing was parsed).
+ */
+export function parseMacosVoiceList(output: string): readonly string[] {
+  const names: string[] = []
+  for (const line of output.split(/\r?\n/u)) {
+    const match = /^(.+?)\s+[a-z]{2,3}_[A-Za-z]{2}\s+#/u.exec(line)
+    if (match?.[1] !== undefined) names.push(match[1].trim())
+  }
+  return names
+}
+
+/** Installed macOS voices per `say` command (listed once per host process). */
+const macosVoiceCache = new Map<string, ReadonlySet<string>>()
+
+/** Drop the cached `say` voice tables (tests, or a host that installs voices at runtime). */
+export function resetMacosVoiceCache(): void {
+  macosVoiceCache.clear()
+}
+
+/**
+ * Validate one configured macOS voice against the installed voice table.
+ * `say` silently falls back to the system default voice — with exit code 0 —
+ * when asked for an unknown voice, so a typo would otherwise change the voice
+ * without any signal. A failed listing is tolerated: synthesis itself reports
+ * the real error.
+ *
+ * @param subprocess - the subprocess service.
+ * @param command - the `say` executable.
+ * @param voice - the configured voice name.
+ * @param signal - caller abort signal.
+ */
+async function ensureMacosVoice(
+  subprocess: SubprocessRuntime,
+  command: string,
+  voice: string,
+  signal: AbortSignal,
+): Promise<void> {
+  let installed = macosVoiceCache.get(command)
+  if (installed === undefined) {
+    let names: readonly string[] = []
+    try {
+      const { exitCode, stdout } = await runCommand(subprocess, [command, '-v', '?'], '', signal)
+      if (exitCode === 0) names = parseMacosVoiceList(stdout)
+    } catch {
+      names = []
+    }
+    if (names.length === 0) return
+    installed = new Set(names)
+    macosVoiceCache.set(command, installed)
+  }
+  if (!installed.has(voice)) {
+    throw new EngineFailure(
+      `macos: voice ${JSON.stringify(voice)} is not installed for ${command} (see \`say -v '?'\`)`,
+      signal.aborted,
+    )
   }
 }
 
@@ -161,23 +282,25 @@ async function readSynthFile(dir: string, name: string): Promise<Uint8Array> {
 }
 
 /**
- * Synthesize speech with the local TTS engine (edge-tts or piper). Temp files
- * are created per attempt and removed before returning; an abort or a
- * non-zero exit surfaces as {@link EngineFailure}.
+ * Synthesize speech with a local TTS engine (edge-tts, piper, or the macOS
+ * system voice). Temp files are created per attempt and removed before
+ * returning; an abort or a non-zero exit surfaces as {@link EngineFailure}.
  *
  * @param subprocess - the subprocess service.
  * @param resolved - resolved config.
  * @param engine - which local engine to run.
  * @param text - text to speak (sanitized by the caller).
  * @param signal - caller abort signal (interruption).
+ * @param voiceOverride - per-call voice override (the macOS engine uses it).
  * @returns the audio bytes and MIME type.
  */
 export async function synthesize(
   subprocess: SubprocessRuntime,
   resolved: ResolvedConfig,
-  engine: 'edge-tts' | 'piper',
+  engine: LocalTtsEngine,
   text: string,
   signal: AbortSignal,
+  voiceOverride?: string,
 ): Promise<SynthResult> {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-talk-'))
   try {
@@ -188,6 +311,20 @@ export async function synthesize(
         throw new EngineFailure(`edge-tts exited ${String(exitCode)}: ${sanitizeText(stderr)}`, signal.aborted)
       }
       return { mime: 'audio/mpeg', data: await readSynthFile(dir, 'speech.mp3') }
+    }
+    if (engine === 'macos') {
+      if (process.platform !== 'darwin') {
+        throw new EngineFailure(`the macos TTS engine is only available on macOS hosts (this host is ${process.platform})`, signal.aborted)
+      }
+      const outPath = join(dir, 'speech.wav')
+      const voice = voiceOverride ?? resolved.macosVoice
+      await ensureMacosVoice(subprocess, resolved.macosCommand, voice, signal)
+      const spec = macosSaySpec(resolved, text, outPath, voice)
+      const { exitCode, stderr } = await runCommand(subprocess, spec.argv, spec.stdin, signal)
+      if (exitCode !== 0) {
+        throw new EngineFailure(`say exited ${String(exitCode)}: ${sanitizeText(stderr)}`, signal.aborted)
+      }
+      return { mime: 'audio/wav', data: await readSynthFile(dir, 'speech.wav') }
     }
     const outPath = join(dir, 'speech.wav')
     const spec = piperSpec(resolved, outPath)

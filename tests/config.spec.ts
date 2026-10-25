@@ -145,4 +145,25 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ stt: { engine: 'whisper', whisper: { modelPath: '' } } })).toThrow(/whisper/u)
     expect(() => resolveConfig({ stt: { engine: 'funasr', funasr: { url: '' } } })).toThrow(/funasr/u)
   })
+
+  it('resolves the macOS say engine defaults, bounds, and explicit selection', () => {
+    const resolved = resolveConfig({})
+    expect(resolved.macosCommand).toBe('/usr/bin/say')
+    expect(resolved.macosVoice).toBe('Eddy (中文（中国大陆）)')
+    expect(resolved.macosRate).toBe(175)
+    // Explicit selection resolves to the macOS engine; `auto` order is unchanged.
+    expect(resolveTtsEngine('macos', resolved)).toBe('macos')
+    expect(resolveTtsEngine(undefined, resolved)).toBe('edge-tts')
+    // The defaults are addressable: selecting the engine needs no extra config.
+    expect(() => resolveConfig({ tts: { engine: 'macos' } })).not.toThrow()
+    // Bounds and non-empty checks are re-judged by the explicit resolve step.
+    expect(() => resolveConfig({ tts: { macos: { rate: 59 } } })).toThrow(/macos\.rate/u)
+    expect(() => resolveConfig({ tts: { macos: { rate: 401 } } })).toThrow(/macos\.rate/u)
+    expect(() => resolveConfig({ tts: { macos: { command: '' } } })).toThrow(/macos\.command/u)
+    expect(() => resolveConfig({ tts: { macos: { voice: '   ' } } })).toThrow(/macos\.voice/u)
+    const overridden = resolveConfig({ tts: { macos: { command: '/usr/bin/say', voice: 'Tingting', rate: 200 } } })
+    expect(overridden.macosVoice).toBe('Tingting')
+    expect(overridden.macosRate).toBe(200)
+  })
 })
+

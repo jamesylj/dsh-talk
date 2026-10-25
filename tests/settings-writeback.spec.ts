@@ -72,6 +72,16 @@ describe('applySettings profile-patch write-back', () => {
     })
   })
 
+  it('writes a macOS engine selection through the same patch path', async () => {
+    await withProfilePatch(async (dir, file) => {
+      const harness = await mountAt(dir)
+      const result = await harness.service.applySettings({ ttsEngine: 'macos' })
+      expect(result.file).toBe(file)
+      const written = await readFile(file, 'utf8')
+      expect(written).toMatch(/^ {6}engine: macos$/m)
+    })
+  })
+
   it('rejects a malformed submission before touching the file at all', async () => {
     await withProfilePatch(async (dir, file) => {
       const harness = await mountAt(dir)

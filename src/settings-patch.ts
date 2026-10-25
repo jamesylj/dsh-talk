@@ -65,7 +65,7 @@ export function validateSettingsInput(input: unknown, rawConfig: Config | undefi
   }
   const ttsEngine = value['ttsEngine']
   if (ttsEngine !== undefined && !(TTS_ENGINES as readonly unknown[]).includes(ttsEngine)) {
-    issues.push({ code: 'tts-engine-invalid', text: 'ttsEngine must be one of auto | browser | edge-tts | piper.' })
+    issues.push({ code: 'tts-engine-invalid', text: 'ttsEngine must be one of auto | browser | edge-tts | macos | piper.' })
   }
   const language = value['language']
   if (language !== undefined && (typeof language !== 'string' || (language !== 'auto' && !/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(language)))) {

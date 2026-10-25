@@ -53,13 +53,13 @@ interface StoredUtterance {
   /** The spoken text (sanitized). */
   text: string
   /** Engine that produced the audio. */
-  engine: 'edge-tts' | 'piper'
+  engine: LocalTtsEngine
 }
 
 /** Engine-specific delivery fields recorded with one speech event. */
 type SpeechDelivery =
   | { readonly engine: 'browser'; readonly voice?: string; readonly rate: number; readonly pitch: number }
-  | { readonly engine: 'edge-tts' | 'piper' }
+  | { readonly engine: LocalTtsEngine }
 
 /** One session's bounded speech-loop record: counters plus the newest utterance. */
 interface SpeechSessionRecord {
@@ -135,7 +135,7 @@ declare module '@deepseek-ai/cordis' {
  * @param resolved - resolved config.
  * @returns the effective engine.
  */
-export function resolveTtsEngine(explicit: TtsEngine | undefined, resolved: ResolvedConfig): 'browser' | 'edge-tts' | 'piper' {
+export function resolveTtsEngine(explicit: TtsEngine | undefined, resolved: ResolvedConfig): 'browser' | LocalTtsEngine {
   const selected = explicit ?? resolved.ttsEngine
   if (selected !== 'auto') return selected
   if (resolved.piperModelPath !== null) return 'piper'
@@ -234,13 +234,13 @@ export class TalkService extends TypertRemoteService {
       }
     }
 
-    const localEngine = engine // edge-tts | piper
+    const localEngine = engine // edge-tts | macos | piper
     const controller = new AbortController()
     this.activeSyntheses.set(utteranceId, controller)
     const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal])
     const startedAt = Date.now()
     try {
-      const result = await synthesize(this.ctx.subprocess, this.resolved, localEngine, spoken, signal)
+      const result = await synthesize(this.ctx.subprocess, this.resolved, localEngine, spoken, signal, options.voice)
       const durationSec = Math.max(0, (Date.now() - startedAt) / 1000)
       this.cacheUtterance(utteranceId, result.mime, result.data, spoken, localEngine)
       const exported = await this.exportAudio(utteranceId, localEngine, result.data)
@@ -416,7 +416,7 @@ export class TalkService extends TypertRemoteService {
     mime: string,
     data: Uint8Array,
     text: string,
-    engine: 'edge-tts' | 'piper',
+    engine: LocalTtsEngine,
   ): void {
     const maxBytes = this.resolved.maxAudioCacheBytes
     this.utterances.set(utteranceId, { mime, data, text, engine })
