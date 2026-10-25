@@ -28,14 +28,36 @@ That flow keeps the report confidential while we triage, and it is the channel w
 
 ## Scope
 
-This plugin gives the harness a voice loop: microphone recording with browser/local speech-to-text, text-to-speech through the browser voice or local subprocess engines (edge-tts/piper), and event announcements. Its own guarantees:
+This plugin gives the harness host-played text-to-speech: automatic read-aloud of
+finished replies, a `speak` tool, and two composer controls (auto/manual mode and
+play/stop). Two engines remain: **MiniMax** `speech-2.8-turbo` (cloud) and a local
+**Qwen3-TTS Base / MLX** clone worker. There is no microphone input, no
+transcription, and no browser audio playback. Its own guarantees:
 
-- Audio content never enters the model context or the session log — only sanitized metadata (utterance id, engine, reason, size, text, and browser voice/rate/pitch when applicable) is logged, and only on hosts whose session vocabulary can carry the event (see the adaptive gate below).
-- Spoken text and every display/log surface pass the sanitizers (credentials, JWTs, bearer headers, control characters, temp paths are redacted or bounded).
-- Local engines run through the official `ctx.subprocess` seam with argv arrays (no shell string interpolation) and abort-signal wiring.
-- The settings panel writes config only as append-only patch fragments with a timestamped backup; it never rewrites the profile file.
-- Microphone permission and recording are entirely browser-mediated; the plugin stores audio in memory only, capped, and never persists it.
-- The `dsh-talk/speech` session event is appended through an adaptive gate: hosts whose known-type vocabulary covers the event append it plainly, hosts with the `ignorable` append option append it with the marker, and envelope-less hosts — every released line through `0.1.1-rc.2`, and `0.1.2-alpha.1`, which removed the envelope and fails closed on unknown types — get no append, so speech can never pollute the session log on those lines. Logs written by dsh-talk ≤ 0.2.1 may still carry unmarked events: on hosts `0.1.0-rc.7` and newer such a session fails its next cold load with `SessionFormatUnsupportedError`. Nothing is corrupted: the log is intact, the running session is unaffected, and adding `"ignorable":true` to each `dsh-talk/speech` line restores the session (repair steps in the README's Known limitations).
-- Chrome's `webkitSpeechRecognition` sends microphone audio to Google's servers for transcription; Web Speech recognition is not an on-device transcription guarantee. Use a configured host engine when microphone audio must remain under your control.
+- Audio bytes never enter the model context, the session log, or the
+  diagnostics log — only sanitized metadata (utterance id, engine, reason, byte
+  count, error, and the spoken text) is logged as a `plugin:dsh-talk/speech`
+  session event. Server and connection state are not logged.
+- Spoken text and every display/log surface pass the sanitizers (credentials,
+  JWTs, bearer headers, control characters, temp paths are redacted or bounded).
+  The diagnostics log is bounded (256 KiB, one rotation) and redacted.
+- Local engines run through the official `ctx.subprocess` seam with argv arrays
+  (no shell string interpolation) and abort-signal wiring; the MLX model runs in
+  the configured Python venv. `ffplay` (Homebrew `ffmpeg`) is used only as the
+  MiniMax streaming player and is never given text.
+- **MiniMax leaves the machine**: the text you hear is sent to MiniMax for
+  synthesis and billed per character, under MiniMax's terms. The API key is
+  resolved per utterance from the configured environment variable or the
+  harness credential store and is never logged or written to the export
+  directory.
+- The settings tab writes config only as append-only profile-patch fragments
+  with a timestamped backup; it never rewrites the profile file.
+- Audio export is **off by default** (`tts.export.enabled: false`). When enabled,
+  synthesized audio is written to a bounded directory (`<home>/.dsh-talk/audio`
+  by default; at most 20 files / 24 hours, matching names only) and the file path
+  is returned in the speak outcome. Deleting that directory removes the
+  persisted audio.
+- MiniMax model output is untrusted input to the player only; the plugin never
+  treats synthesized bytes as executable content.
 
 Vulnerabilities in the harness itself should be reported to the official harness maintainers instead.

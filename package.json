@@ -86,14 +86,15 @@
         "0.1.7-alpha.2",
         "0.1.7-rc.1",
         "0.1.7-rc.2",
-        "0.2.1-alpha.1"
+        "0.2.1-alpha.1",
+        "0.2.1-rc.3"
       ]
     },
     "capability": {
       "id": "voice-session-loop",
       "kind": "surface",
       "invocation": "speak",
-      "expected": "speaks agent replies aloud, transcribes microphone input into the composer, announces turn/approval/error events, and stops playback when the user starts talking"
+      "expected": "speaks agent replies aloud on the host through MiniMax speech-2.8-turbo or a local MLX Qwen3-TTS clone, with an auto/manual mode switch, a manual play/stop composer button, and optional bounded audio export"
     },
     "evidence": {
       "install": null,
@@ -111,10 +112,9 @@
     "voice",
     "speech",
     "tts",
-    "stt",
-    "speech-to-text",
     "text-to-speech",
-    "microphone"
+    "minimax",
+    "mlx"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0",

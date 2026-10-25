@@ -1,42 +1,117 @@
 # AGENTS.md
 
-Standalone DeepSeek Harness plugin repository (`dsh-talk`). Development follows the dsh-plugin-guide skill and the official plugin contract; this file records repo-local decisions.
+Standalone DeepSeek Harness plugin repository (`dsh-talk`). Development follows
+the plugin contract in `@deepseek-ai/dsh-*`; this file records the decisions a
+future coding agent needs. **Current line: 0.5.3 — host-played TTS only.**
+
+## Product shape
+
+Two engines, both playing on the host machine (the browser never fetches audio):
+
+- **MiniMax** `speech-2.8-turbo`: the synchronous T2A endpoint is called with
+  `stream: true`; hex MP3 chunks from the SSE stream are written into one
+  `ffplay` process stdin. Requests longer than `tts.minimax.chunkChars` split at
+  sentence boundaries while the same player keeps playing.
+- **MLX** (offline): a resident Python worker keeps a quantized Qwen3-TTS
+  **Base** model warm and clones the `tts.mlx.refAudio` speaker with x-vector
+  only (no preset voice, no ICL transcript); fragments queue into one
+  `sounddevice` output stream. MiniMax failures fall back to MLX when
+  `tts.fallback` and a reference WAV are configured.
+
+Composer surface (`conversation.input.left`): an **auto/manual mode pill**
+(`talk-mode`) and a **play/stop button** (`talk-voice`). Manual mode silences
+auto-read and the turn-end announcement; the play button always works. Plus a
+simplified settings tab (`settings.plugins.tab`, id `talk`).
 
 ## Layout
 
-- `src/index.ts` — function-plugin contract (`name`/`inject`/`Config`/`apply`; NO default export). Injects `tools` + `subprocess`. Mounts the talk service, the `speak` tool, the `talk:speech` projection unit, the auto-reply controller, and the three announcement listeners (turn-end via `agent/status` running→idle tracking — the same transition scans the finished turn for an automatic read; `agent/error`; `approval/request` waterfall that ALWAYS calls `next()` and never blocks the gate on speech).
-- `src/config.ts` — Schemastery schema + explicit `resolveConfig`. Current-API notes: Schemastery 3.18 has no `.nullable()`/`.optional()`; absent object keys pass through `undefined`, and a NULL `.default()` never fills (the resolver returns the original data when the fallback is nullable) — so leaf defaults only, nested objects resolve through `resolveConfig`'s `?? {}` chain, and optional strings are plain `z.string()` (type says string, runtime may omit). Cross-field engine checks (`funasr` needs a URL, `piper`/`whisper` need a model) throw in `resolveConfig`, and the `tts.export.*` knobs resolve there into an absolute directory plus the count/age bounds (an empty `dir` = `<home>/.dsh-talk/audio`; `~` expands to home; a relative path resolves under home, never the workspace). `autoReply.*` resolves to `autoReplyEnabled`/`autoReplyMaxChars`/`autoReplySkipIfToolSpoke`/`autoReplySkipSubagents`/`autoReplyReasons`, with `maxChars` bounded 1..100000 and at least one reason required.
-- `src/auto-reply.ts` — automatic read-aloud policy and controller: on the `agent/status` running→idle transition it scans the session log for the last `turn/end`, drops reasons outside `autoReply.reasons`, takes the last committed `assistant/message` of that turn, joins its `text` blocks, strips fenced/inline code, truncates to `autoReply.maxChars` at whitespace, and enforces `skipIfToolSpoke`/`skipSubagents`; it dedupes by assistant message id, speaks with reason `auto-reply` (fire-and-forget), and reports "handled" so the turn-end announcement is suppressed instead of talking over the reply.
-- `src/service.ts` — `TalkService` (TypertRemoteService, namespace `talk`): speak pipeline (resolve engine → subprocess synthesis or browser delegation → bounded file export → in-memory audio cache → `dsh-talk/speech` event), `status`/`audio`/`transcribe`/`interrupt`/`applySettings` Remote methods. The profile patch layer path is read STRUCTURALLY (`ctx.baseUrl`) because the loader package is not published.
-- `src/audio-export.ts` — the persistent half of the speak pipeline: UTC-stamped `speech-<stamp>-<token>.<ext>` naming (never derived from the spoken text), home-relative directory resolution (`tts.export.dir`, default `<home>/.dsh-talk/audio` — never the workspace root), and a two-dimensional prune policy (age first, then count) that only ever unlinks names matching `EXPORT_FILE_PATTERN`. `selectPrunableExports` is pure; `exportSynthesizedAudio` never throws into the speak path (a failed write becomes the `failed` state), and pruning is best-effort.
-- `src/tool.ts` — the `speak` tool through `defineTool` (strict schema typing: `required: true as const`, `additionalProperties: false`, render/execute inferred — never annotated with broad `JsonValue`). Its canonical value carries `audioPath`/`audioExport`/`exportNote`; `renderSpeak` appends the same file clause to the model-facing text so another tool can consume the path.
-- `src/engine.ts` — pure command builders (edge-tts/piper/whisper.cpp) + `runCommand`/`synthesize`/`transcribe*` over `ctx.subprocess` and one FunASR HTTP endpoint; temp files per attempt, removed before returning.
-- `src/speech.ts` / `src/vocabulary.ts` / `src/projection.ts` — the `dsh-talk/speech` session-log seat, the shared payload types, the dual-channel append gate (`appendSpeechEvent`: hosts whose known vocabulary covers `dsh-talk/speech` append it plainly; hosts that publish the experimental `appendPluginRecord` API (0.2.1+) append an ignorable `plugin:dsh-talk/speech` plugin record — the `plugin:` + lowercase slash-segment type grammar — which the projection folds exactly like the plain event; anything else gets no append and keeps the `tool/call` + `tool/result` reconstructable trail), and the `talk:speech` projection unit (folds BOTH event types; a plugin record restored from arbitrary stored JSON has its payload validated by the shared zod schema before it can reach the wire; schema = value ∪ null, so the registry's `ZodType<TalkSpeechProjection | null>` matches exactly).
-- `src/wire.ts` — the `talk` Remote wire vocabulary with zod v4 codecs + the shared invocation descriptors (host `./typert` manifest and client Remote contribution consume the SAME list).
-- `src/settings-patch.ts` — append-only profile-patch write-back with timestamped backups (settings tab saves).
-- `src/sanitize.ts` — display redaction: sk-* keys, the Authorization bearer header (label preserved), bare Bearer tokens, key=value credentials, JWTs; temp-path and control-character handling. Pattern ORDER is load-bearing: header form before bare form, key-list excludes `authorization`.
-- `src/client/` — browser half: `apply(ctx: Context)` on the plain cordis context (`ClientContext` from the removed `dsh-client-runtime` is gone); the `remote` service type rides the published `@deepseek-ai/dsh-api-remotes/client` merge, and the slot registry is read through a local structural `SlotsFace` (its owning package differs across host lines). `$mount`s the Remote contribution, registers the mic button in `conversation.input.left` (id `talk-mic`) and the settings tab (`settings.plugins.tab`, id `talk`); pure presenter (`present.ts`), inline scoped stylesheet (standalone bundles cannot use the in-repo CSS-module pipeline), en/zh dictionaries.
-- `tests/` — vitest; real `Context` + `Session`/`ToolRuntime`/`SessionProjectionRegistry` from the `0.1.7-alpha.2` peers; the subprocess provider is scripted (a subclass of the REAL `SubprocessRuntime`); browser-only surfaces (MediaRecorder/Web Speech) are feature-detected and covered through the pure presenter/state machine. `tests/audio-export.spec.ts` covers the export policy (pure naming/directory/prune cases) plus the four speak-tool states, and `tests/composition.spec.ts` drives the BUILT artifact through the real Loader (with `scripts/loader-runner.mjs` writing real bytes where the engine argv points) so the export path is proven end to end in the shipped bundle. The harness points every mount's export directory at a temp dir, so a test run never writes into a developer's home, and `tests/global-setup.ts` (wired through `vitest.config.ts`) removes the directories one run created — vitest terminates its fork workers without running their own exit handlers.
+- `src/index.ts` — function plugin (`name`/`inject`/`Config`/`apply`; no default
+  export). Injects `tools` + `subprocess`. Mounts the service, the `speak` tool,
+  the auto-reply controller (policy `enabled` is a getter over
+  `TalkService.mode()`) and one `agent/status` running→idle listener that reads
+  the finished turn, or falls back to the "Turn complete." announcement.
+- `src/wire.ts` — the `talk` Remote vocabulary (zod codecs + invocation
+  descriptors shared by the host `./typert` manifest and the client contribution).
+  Methods: `status`, `playLatest`, `stop`, `applyMode`, `applySettings`.
+  **A descriptor's `method` must name a real `TalkService` method** — the host
+  calls it positionally with the decoded parameter values, and a parameter
+  codec describes the VALUE the method receives (scalar for `sessionId`/`mode`,
+  one object for `settings`). `tests/service.spec.ts` asserts the coverage.
+- `src/service.ts` — `TalkService` (TypertRemoteService, namespace `talk`):
+  scoped preemption, MiniMax → MLX fallback, optional bounded export, speech
+  event log, runtime auto/manual mode, session resolution. The settings tab's
+  profile patch path is read structurally (`ctx.baseUrl`).
+- `src/minimax.ts` / `src/mlx.ts` / `src/engine.ts` — the two engines plus
+  `EngineFailure`. The MiniMax idle budget resets on every SSE read and player
+  write (long replies must not hit a total deadline), and player stdin carries
+  an `error` listener (an unhandled EPIPE once crashed the host).
+- `src/auto-reply.ts` — pure selection helpers (`findAutoReply`,
+  `findLatestAssistantText`, `stripCodeBlocks`, `truncateAtWhitespace`,
+  `prepareAutoReplyText`) plus the stateful `AutoReplyController`.
+- `src/audio-export.ts` — UTC-stamped `speech-<stamp>-<token>.<ext>` names,
+  home-relative directory, age-then-count prune, only matching names unlinked.
+- `src/speech.ts` — the `plugin:dsh-talk/speech` session event (dual-channel
+  gate: plain known-vocabulary event or the ignorable plugin record). Audio
+  bytes never enter the log.
+- `src/settings-patch.ts` — append-only profile-patch write-back with
+  timestamped backups.
+- `src/diagnostics.ts` — bounded, rotating, redacted
+  `~/.dsh-talk/logs/diagnostics.log` for interactive failures (a composer
+  Remote call that cannot run, an engine fallback); `DSH_TALK_LOG_DIR`
+  overrides the directory so tests never write to a developer's home.
+- `src/sanitize.ts` — credential/JWT/bearer/control-character redaction. Pattern
+  order is load-bearing.
+- `src/client/` — browser half: `TalkModeButton`, `TalkVoiceButton`,
+  `TalkSettingsTab`, the Remote contribution (`remote.ts`), en/zh dictionaries,
+  and one scoped inline stylesheet (standalone bundles cannot use the in-repo
+  CSS-module pipeline). Session-scope slots receive the session id as the first
+  `inject(sessionId)` argument — prefer it over the optional standard prop.
+- `worker/mlx_tts.py` — JSON-lines resident worker (`accepted`/`chunk`/`done`/
+  `cancelled`/`error`; `cancel` stops the active request, keeps the model warm,
+  and stops the `sounddevice` stream).
+- `scripts/` — `prepare.mjs` (the single build entry: tsc declarations →
+  `lib/types`, tsdown bundles → `lib/index.js` + `lib/typert.host.js` +
+  `lib/client.js`), `check-readme-sync.mjs`, `check-lockfile-drift.mjs`,
+  `verify-self-contained.mjs`, `verify-artifacts.mjs`, `fix-dts.mjs`.
+- `tests/` — vitest against a real Cordis `Context`/`SessionStore`/`ToolRuntime`
+  with a scripted `SubprocessRuntime` subclass (`tests/harness.ts`), plus
+  `tests/wire.spec.ts` (descriptor shapes) and `tests/diagnostics.spec.ts`.
 
-## Hard rules applied here
+## Hard rules
 
-- **Waterfall discipline.** The `approval/request` announcement listener always calls `next()` and never blocks the gate; the announcement is fire-and-forget speech.
-- **Model-visible ⟺ logged.** The model sees only the `speak` tool's canonical value and render text. Every utterance goes through the dual-channel `dsh-talk/speech` gate in `src/speech.ts`: hosts whose known vocabulary covers the event append it plainly, hosts that publish the experimental `appendPluginRecord` API (0.2.1+) append an ignorable `plugin:dsh-talk/speech` plugin record, and envelope-less hosts (`0.1.1-rc.2`, `0.1.2-alpha.1`, `0.1.2-rc.1`, `0.1.6-alpha.2`) get no append — the `tool/call` + `tool/result` events remain the reconstructable trail and the playback projection simply stays empty there. The projection folds both event types and validates a restored plugin record's payload before it reaches the wire. Audio bytes for browser playback stay in the in-memory cache and cross the `talk/audio` endpoint; in ADDITION, every locally synthesized utterance is written once to the bounded export directory (see `src/audio-export.ts`) and its absolute path rides the speak outcome, which is the one file path the model is meant to see and reuse.
-- **Sanitized everything.** All display/log surfaces pass `sanitizeText`/`redactSecrets`/`displayPath`; credentials, JWTs, and temp audio paths never leak into presentation. The ONE deliberate exception is the exported audio path in the speak outcome and its render text: it is a persistent artifact in the plugin's own directory (not a temp path), it still passes `redactSecrets`, and `displayPath` is not applied because another tool has to receive it verbatim.
-- **Fail loud.** `resolveConfig` re-validates bounds and cross-field engine requirements; the loader's Schemastery pass validates the schema itself. (Raw `ctx.plugin` mounts in tests swallow async apply rejections — the two documented fail-loud layers are the schema and `resolveConfig`.)
-- **Effect-owning lifecycles.** Every registration (service, tool, projection, listeners) rides the plugin fiber; client registrations ride the client plugin fiber and `$mount` owns the Remote namespace.
-- **No hardcoded tunables.** Every knob is a validated `Config` field documented in `cordis.patch.yml` and the five READMEs.
+- **Model-visible ⟺ logged.** Everything the plugin speaks is appended as a
+  speech session event (text, engine, reason, byte count, error); no audio
+  bytes. The export path is the one file path the model may see.
+- **Sanitized everything.** Every display/log surface passes
+  `sanitizeText`/`redactSecrets`; credentials and temp paths never leak.
+- **Fail visibly.** Remote methods must exist for their descriptors (tested);
+  interactive failures are written to the diagnostics log instead of vanishing
+  into a tooltip.
+- **Effect-owning lifecycles.** Every host registration rides the plugin fiber;
+  client registrations ride the client plugin fiber and `$mount` owns the
+  Remote namespace.
+- **No dead features.** v0.5 removed microphone/STT, browser `<audio>`
+  playback, the audio cache/projection, edge-tts, piper, the macOS `say` engine
+  and the multi-field settings write-back. Do not reintroduce them without a
+  product decision.
 
-## Build
+## Build and checks
 
-`typescript` + `tsdown` are regular `dependencies` (the git channel's `prepare` builds with production dependencies alone). `scripts/prepare.mjs` is the single build entry (tsc declarations → `lib/types`, tsdown bundles → `lib/index.js` + `lib/typert.host.js` + `lib/client.js`). The client bundle follows the shell's ModuleLoader handshake (`window.__ModuleLoader__.load({ id: 'dsh-talk', factory })`) with platform modules external; zod is inlined into both halves.
+`pnpm run build` (`scripts/prepare.mjs`) then `pnpm pack`; install with
+`plugin_manager install_bundle` using the tarball under
+`~/.dsh/local-plugins/` (hot reload; a client bundle change needs a page
+refresh). Verification set:
 
-## Checks
-
-`pnpm run typecheck && pnpm run typecheck:ci && pnpm test && pnpm run build && pnpm run verify:self-contained && pnpm run verify:artifacts && pnpm run check:lockfile && pnpm pack`. The plain `typecheck` resolves the local checkout through tsconfig `paths`; `typecheck:ci` resolves the npm-published `0.1.7-rc.2` faces (the line the dev/test pins carry) — keep both green.
+```sh
+pnpm run typecheck && pnpm run typecheck:ci && pnpm test && pnpm run lint \
+  && pnpm run build && pnpm run verify:self-contained \
+  && pnpm run verify:artifacts && pnpm run check:readmes \
+  && pnpm run check:lockfile
+```
 
 ## Docs
 
-- Five-language READMEs (`README.md` is the source of truth) — keep all five in sync.
-- GitHub topics: `dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `voice`, `speech`, `tts`, `stt`, `speech-to-text`, `text-to-speech`, `microphone` (mirror `package.json` keywords).
-- License is Apache-2.0. `THIRD_PARTY_NOTICES.md` documents the build-time dependencies; no third-party source is bundled.
+- Five READMEs (`README.md` is the source of truth; `check:readmes` enforces
+  equal section counts and one shared configuration table).
+- `cordis.patch.yml` documents every config key inline.
+- License Apache-2.0; no third-party source is bundled (`THIRD_PARTY_NOTICES.md`).
