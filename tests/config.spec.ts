@@ -19,7 +19,7 @@ describe('resolveConfig', () => {
     expect(resolved.minimaxChunkChars).toBe(2_000)
     expect(resolved.minimaxRequestTimeoutMs).toBe(120_000)
     expect(resolved.minimaxApiKeyEnv).toBe('MINIMAX_CN_API_KEY')
-    expect(resolved.minimaxCredentialsFile).toBe('/Users/jambone/.dsh/.credentials.yaml')
+    expect(resolved.minimaxCredentialsFile?.endsWith('/.dsh/.credentials.yaml')).toBe(true)
     expect(resolved.mlxModel).toContain('qwen3-tts-0.6b-base-4bit')
     expect(resolved.mlxRefAudio).toBeNull()
     expect(resolved.ttsExportEnabled).toBe(false)

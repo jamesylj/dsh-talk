@@ -1,5 +1,34 @@
+# Dependencies and build output
 node_modules/
 lib/
-*.tgz
-.rc6-check/
 coverage/
+.rc6-check/
+
+# Packed plugin bundles
+*.tgz
+
+# macOS metadata
+.DS_Store
+._*
+
+# Secrets and local environment — never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.yaml
+.credentials.yaml
+**/.credentials.yaml
+secrets.json
+
+# Logs and local runtime state
+*.log
+.dsh-talk/
+.dsh/
+
+# Editor noise
+.idea/
+.vscode/
