@@ -79,7 +79,7 @@ Press the mic, speak, and the reply is spoken back — with speak-to-interrupt.
 - **Speak-to-interrupt** — starting to talk stops whatever is playing (client → host over the `talk` Remote namespace).
 - **Event announcements** — turn completion, pending approvals (waterfall-safe: never blocks the gate), and errors, with a mute switch and configurable phrases.
 - **Automatic reply read-aloud** — by default the assistant's final reply is spoken when a turn completes, through the same speak pipeline; aborted, blocked, and error turns keep the "Turn complete." announcement, and `autoReply.enabled: false` restores it everywhere (see Automatic reply read-aloud).
-- **Settings tab** — engine/language selects and announcement switches, saved as append-only profile-patch operations with backups.
+- **Settings tab** — engine/language selects, announcement switches, and the auto-read toggle, saved as append-only profile-patch operations with backups.
 
 ```text
 browser                                host
@@ -229,6 +229,7 @@ By default (`autoReply.enabled: true`) the final assistant reply of a completed 
 - **Subagents**: `autoReply.skipSubagents: true` never reads sessions created by a subagent or team agent (`origin: subagent` or a non-zero delegation depth).
 - **Playback is serialized**: a new utterance stops and releases the previous audio player and cancels any in-flight browser `SpeechSynthesis`, so consecutive auto-read turns never overlap.
 - **Wire**: the utterance is logged with reason `auto-reply`, which the `talk:speech` projection and `talk/latest` carry, and it is exported like any other utterance when a local engine synthesizes it.
+- **Settings toggle**: the Settings → Plugins → Talk panel exposes the same switch as `autoReply.enabled`; saving appends it to the profile patch, so reload the profile to apply (the character cap and the two skip guards stay config-only).
 
 ### Audio file export
 
@@ -247,7 +248,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 |---|---|---|
 | `speak` | tool | Speaks text aloud (browser/edge-tts/piper); per-call engine/voice overrides; canonical JSON outcome |
 | mic button | `conversation.input.left` slot | Record → transcribe → fill draft (or submit); speak-to-interrupt on press |
-| settings tab | `settings.plugins.tab` (id `talk`) | Engine/language/announcement switches; append-only save |
+| settings tab | `settings.plugins.tab` (id `talk`) | Engine/language/announcement/auto-read switches; append-only save |
 | `talk:*` | Typert Remote | `status`, `audio`, `transcribe`, `applySettings`, `interrupt` (host namespace) |
 
 ## Permissions & data
@@ -280,7 +281,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc: src + tests against the local harness checkout
 pnpm run typecheck:ci  # tsc against the published 0.1.7-alpha.2 types (no paths)
-pnpm test           # vitest: 150 tests, 17 suites
+pnpm test           # vitest: 153 tests, 17 suites
 pnpm run build      # tsc declarations + tsdown bundles (lib/)
 pnpm run verify:self-contained  # dependency specs resolve from the registry
 pnpm run verify:artifacts       # built ESM faces + client ModuleLoader handshake

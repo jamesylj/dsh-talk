@@ -68,6 +68,13 @@ export interface TalkStatus {
     onApproval: boolean
     onError: boolean
   }
+  /** Automatic read-aloud of the assistant's final reply. */
+  autoReply: {
+    /** Whether a completed turn's final reply is read aloud (panel-editable). */
+    enabled: boolean
+    /** Cap on one auto-read utterance in characters (read-only here; config `autoReply.maxChars`). */
+    maxChars: number
+  }
   /** Recording behavior. */
   record: {
     enabled: boolean
@@ -115,6 +122,11 @@ export const TALK_STATUS_SCHEMA = z.object({
     onTurnEnd: z.boolean(),
     onApproval: z.boolean(),
     onError: z.boolean(),
+  }),
+  autoReply: z.object({
+    enabled: z.boolean(),
+    // Same bound as config.ts MAX_AUTO_REPLY_MAX_CHARS (the host resolves it).
+    maxChars: z.number().int().min(1).max(100_000),
   }),
   record: z.object({
     enabled: z.boolean(),
@@ -187,6 +199,8 @@ export interface TalkSettingsInput {
   onApproval?: boolean | undefined
   /** Announce errors. */
   onError?: boolean | undefined
+  /** Read the assistant's final reply aloud when a turn completes. */
+  autoReplyEnabled?: boolean | undefined
   /** Whether talking interrupts playback. */
   interrupt?: boolean | undefined
 }
@@ -200,6 +214,7 @@ export const TALK_SETTINGS_INPUT_SCHEMA = z.object({
   onTurnEnd: z.boolean().optional(),
   onApproval: z.boolean().optional(),
   onError: z.boolean().optional(),
+  autoReplyEnabled: z.boolean().optional(),
   interrupt: z.boolean().optional(),
 })
 

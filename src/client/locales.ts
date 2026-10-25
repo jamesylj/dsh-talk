@@ -20,6 +20,7 @@ export type TalkLocaleKey =
   | 'announceOnTurnEnd'
   | 'announceOnApproval'
   | 'announceOnError'
+  | 'autoReplyEnabled'
   | 'interrupt'
   | 'save'
   | 'saved'
@@ -40,6 +41,7 @@ export const en: Record<TalkLocaleKey, string> = {
   announceOnTurnEnd: 'Announce turn completion',
   announceOnApproval: 'Announce pending approvals',
   announceOnError: 'Announce errors',
+  autoReplyEnabled: 'Read reply aloud automatically',
   interrupt: 'Talking stops playback',
   save: 'Save settings',
   saved: 'Settings appended to the profile patch; reload to apply.',
@@ -61,6 +63,7 @@ export const zh: Record<TalkLocaleKey, string> = {
   announceOnTurnEnd: '回合完成时播报',
   announceOnApproval: '待审批时播报',
   announceOnError: '出错时播报',
+  autoReplyEnabled: '自动朗读助手回复',
   interrupt: '开始说话即停止播放',
   save: '保存设置',
   saved: '设置已追加到 profile patch，重载后生效。',

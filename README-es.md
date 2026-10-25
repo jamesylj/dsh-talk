@@ -79,7 +79,7 @@ Pulsa el micrófono, habla y la respuesta se lee en voz alta — hablar interrum
 - **Hablar interrumpe** — empezar a hablar detiene la reproducción (canal client→host sobre el espacio `talk`).
 - **Anuncios de eventos** — fin de turno, aprobaciones pendientes (seguro en cascada: nunca bloquea la puerta) y errores, con interruptor de silencio y frases configurables.
 - **Lectura automática de la respuesta** — por defecto, la respuesta final del asistente se lee en voz alta al completarse el turno por la misma canalización speak; los turnos abortados, bloqueados y con error conservan el anuncio "Turn complete.", y `autoReply.enabled: false` lo restaura en todos (ver Lectura automática de la respuesta).
-- **Pestaña de ajustes** — selección de motor/idioma e interruptores de anuncios, guardados como operaciones append-only del parche de perfil con copias de seguridad.
+- **Pestaña de ajustes** — selección de motor/idioma, interruptores de anuncios y el de lectura automática, guardados como operaciones append-only del parche de perfil con copias de seguridad.
 
 ## Inicio rápido
 
@@ -220,6 +220,7 @@ Por defecto (`autoReply.enabled: true`), la respuesta final del asistente de un 
 - **Subagentes**: `autoReply.skipSubagents: true` nunca lee sesiones creadas por un subagente o agente de equipo (`origin: subagent` o profundidad de delegación distinta de cero).
 - **Reproducción serializada**: una locución nueva detiene y libera el reproductor de audio anterior y cancela cualquier `SpeechSynthesis` del navegador en curso, así que los turnos consecutivos leídos de forma automática nunca se solapan.
 - **Wire**: la locución se registra con la razón `auto-reply`, que llevan la proyección `talk:speech` y `talk/latest`, y se exporta como cualquier otra locución cuando la sintetiza un motor local.
+- **Interruptor en ajustes**: el panel Ajustes → Plugins → Talk expone el mismo interruptor que `autoReply.enabled`; al guardar se añade al parche de perfil, así que recarga el perfil para aplicarlo (el tope de caracteres y los dos guards siguen siendo solo de configuración).
 
 ### Exportación a archivo de audio
 
@@ -238,7 +239,7 @@ Cada locución sintetizada por un motor local (`edge-tts`, `piper`) se escribe e
 |---|---|---|
 | `speak` | herramienta | Lee texto en voz alta (browser/edge-tts/piper); overrides de motor/voz por llamada; resultado JSON canónico |
 | botón de micrófono | slot `conversation.input.left` | Grabar → transcribir → rellenar borrador (o enviar); hablar interrumpe al pulsar |
-| pestaña de ajustes | `settings.plugins.tab` (id `talk`) | Motores/idioma/anuncios; guardado append-only |
+| pestaña de ajustes | `settings.plugins.tab` (id `talk`) | Motores/idioma/anuncios/lectura automática; guardado append-only |
 | `talk:*` | Typert Remote | `status`, `audio`, `transcribe`, `applySettings`, `interrupt` (espacio del host) |
 
 ## Permisos y datos
@@ -271,7 +272,7 @@ Cada locución sintetizada por un motor local (`edge-tts`, `piper`) se escribe e
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc: src + tests contra el checkout local del harness
 pnpm run typecheck:ci  # tsc contra los tipos publicados 0.1.7-alpha.2 (sin paths)
-pnpm test           # vitest: 150 tests, 17 suites
+pnpm test           # vitest: 153 tests, 17 suites
 pnpm run build      # declaraciones tsc + bundles tsdown (lib/)
 pnpm run verify:self-contained  # las specs de dependencias resuelven desde el registry
 pnpm run verify:artifacts       # caras ESM construidas + handshake ModuleLoader del cliente

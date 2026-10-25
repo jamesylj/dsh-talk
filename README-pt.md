@@ -79,7 +79,7 @@ O `dsh-talk` fecha o loop de voz nos dois sentidos:
 - **Falar interrompe** — começar a falar para a reprodução (canal client→host sobre o namespace `talk`).
 - **Anúncios de eventos** — fim de turno, aprovações pendentes (seguro em cascata: nunca bloqueia o portão) e erros, com interruptor de mudo e frases configuráveis.
 - **Leitura automática da resposta** — por padrão, a resposta final do assistente é lida em voz alta quando o turno é concluído, pelo mesmo pipeline de fala (speak); turnos abortados, bloqueados e com erro mantêm o anúncio "Turn complete.", e `autoReply.enabled: false` o restaura em todos (ver Leitura automática da resposta).
-- **Aba de configurações** — seleção de motor/idioma e interruptores de anúncios, salvos como operações append-only do patch de perfil com backups.
+- **Aba de configurações** — seleção de motor/idioma, interruptores de anúncios e o de leitura automática, salvos como operações append-only do patch de perfil com backups.
 
 ## Início rápido
 
@@ -220,6 +220,7 @@ Por padrão (`autoReply.enabled: true`), a resposta final do assistente de um tu
 - **Subagentes**: `autoReply.skipSubagents: true` nunca lê sessões criadas por um subagente ou agente de equipa (`origin: subagent` ou profundidade de delegação diferente de zero).
 - **Reprodução serializada**: uma fala nova para e liberta o leitor de áudio anterior e cancela qualquer `SpeechSynthesis` do navegador em curso, pelo que turnos consecutivos lidos automaticamente nunca se sobrepõem.
 - **Wire**: a fala é registada com a razão `auto-reply`, que a projeção `talk:speech` e `talk/latest` carregam, e é exportada como qualquer outra fala quando um motor local a sintetiza.
+- **Interruptor nas configurações**: o painel Configurações → Plugins → Talk expõe o mesmo interruptor que `autoReply.enabled`; salvar acrescenta-o ao patch de perfil, então recarregue o perfil para aplicar (o limite de caracteres e os dois guards continuam apenas na configuração).
 
 ### Exportação para arquivo de áudio
 
@@ -238,7 +239,7 @@ Cada fala sintetizada por um motor local (`edge-tts`, `piper`) é gravada num ar
 |---|---|---|
 | `speak` | ferramenta | Lê texto em voz alta (browser/edge-tts/piper); overrides de motor/voz por chamada; resultado JSON canônico |
 | botão de microfone | slot `conversation.input.left` | Gravar → transcrever → preencher rascunho (ou enviar); falar interrompe ao pressionar |
-| aba de configurações | `settings.plugins.tab` (id `talk`) | Motores/idioma/anúncios; salvamento append-only |
+| aba de configurações | `settings.plugins.tab` (id `talk`) | Motores/idioma/anúncios/leitura automática; salvamento append-only |
 | `talk:*` | Typert Remote | `status`, `audio`, `transcribe`, `applySettings`, `interrupt` (namespace do host) |
 
 ## Permissões e dados
@@ -271,7 +272,7 @@ Cada fala sintetizada por um motor local (`edge-tts`, `piper`) é gravada num ar
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc: src + tests contra o checkout local do harness
 pnpm run typecheck:ci  # tsc contra os tipos publicados 0.1.7-alpha.2 (sem paths)
-pnpm test           # vitest: 150 testes, 17 suítes
+pnpm test           # vitest: 153 testes, 17 suítes
 pnpm run build      # declarações tsc + bundles tsdown (lib/)
 pnpm run verify:self-contained  # as specs de dependências resolvem pelo registry
 pnpm run verify:artifacts       # faces ESM construídas + handshake ModuleLoader do cliente

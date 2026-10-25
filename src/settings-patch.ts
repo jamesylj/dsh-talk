@@ -71,7 +71,7 @@ export function validateSettingsInput(input: unknown, rawConfig: Config | undefi
   if (language !== undefined && (typeof language !== 'string' || (language !== 'auto' && !/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(language)))) {
     issues.push({ code: 'language-invalid', text: 'language must be "auto" or a BCP-47 tag.' })
   }
-  for (const key of ['announceEnabled', 'onTurnEnd', 'onApproval', 'onError', 'interrupt']) {
+  for (const key of ['announceEnabled', 'onTurnEnd', 'onApproval', 'onError', 'autoReplyEnabled', 'interrupt']) {
     const entry = value[key]
     if (entry !== undefined && typeof entry !== 'boolean') {
       issues.push({ code: 'settings-malformed', text: `${key} must be a boolean.` })
@@ -97,6 +97,7 @@ export function validateSettingsInput(input: unknown, rawConfig: Config | undefi
       ...(value['onTurnEnd'] === true || value['onTurnEnd'] === false ? { onTurnEnd: value['onTurnEnd'] } : {}),
       ...(value['onApproval'] === true || value['onApproval'] === false ? { onApproval: value['onApproval'] } : {}),
       ...(value['onError'] === true || value['onError'] === false ? { onError: value['onError'] } : {}),
+      ...(value['autoReplyEnabled'] === true || value['autoReplyEnabled'] === false ? { autoReplyEnabled: value['autoReplyEnabled'] } : {}),
       ...(value['interrupt'] === true || value['interrupt'] === false ? { interrupt: value['interrupt'] } : {}),
     },
   }
@@ -125,6 +126,9 @@ export function mergeTalkRowConfig(rawConfig: Config | undefined, settings: Talk
   const announce = (typeof merged['announce'] === 'object' && merged['announce'] !== null && !Array.isArray(merged['announce']))
     ? { ...(merged['announce'] as Record<string, unknown>) }
     : {}
+  const autoReply = (typeof merged['autoReply'] === 'object' && merged['autoReply'] !== null && !Array.isArray(merged['autoReply']))
+    ? { ...(merged['autoReply'] as Record<string, unknown>) }
+    : {}
   if (settings.sttEngine !== undefined) stt['engine'] = settings.sttEngine
   if (settings.language !== undefined) stt['language'] = settings.language
   if (settings.ttsEngine !== undefined) tts['engine'] = settings.ttsEngine
@@ -132,10 +136,12 @@ export function mergeTalkRowConfig(rawConfig: Config | undefined, settings: Talk
   if (settings.onTurnEnd !== undefined) announce['onTurnEnd'] = settings.onTurnEnd
   if (settings.onApproval !== undefined) announce['onApproval'] = settings.onApproval
   if (settings.onError !== undefined) announce['onError'] = settings.onError
+  if (settings.autoReplyEnabled !== undefined) autoReply['enabled'] = settings.autoReplyEnabled
   if (settings.interrupt !== undefined) merged['interrupt'] = settings.interrupt
   merged['stt'] = stt
   merged['tts'] = tts
   merged['announce'] = announce
+  merged['autoReply'] = autoReply
   return merged
 }
 

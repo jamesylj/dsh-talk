@@ -459,6 +459,10 @@ export class TalkService extends TypertRemoteService {
         onApproval: this.resolved.announceOnApproval,
         onError: this.resolved.announceOnError,
       },
+      autoReply: {
+        enabled: this.resolved.autoReplyEnabled,
+        maxChars: this.resolved.autoReplyMaxChars,
+      },
       record: {
         enabled: this.resolved.recordEnabled,
         hotkey: this.resolved.recordHotkey,

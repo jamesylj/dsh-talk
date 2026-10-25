@@ -5,6 +5,7 @@
 ### Added
 
 - **The assistant's final reply is read aloud by default.** A turn whose `turn/end` reason is `completed` or `max-tokens` now speaks its last committed `assistant/message` through the same pipeline as the `speak` tool (reason `auto-reply`), and the generic "Turn complete." announcement is suppressed for turns whose reply was read; aborted, blocked, and error turns are not read and keep the announcement. Fenced code blocks and inline backticks are stripped before synthesis, long replies are truncated to `autoReply.maxChars`, a turn that already used the `speak` tool is not re-read, and subagent/team-agent sessions are never read. New config: `autoReply.enabled` (default `true`), `autoReply.maxChars` (default `600`, 1..100000), `autoReply.skipIfToolSpoke` (default `true`), `autoReply.skipSubagents` (default `true`), `autoReply.reasons` (default `completed`, `max-tokens`).
+- **The auto-reply switch is now in the settings panel.** The talk settings tab (Settings → Plugins → Talk) gains a "Read reply aloud automatically" checkbox for the same switch as `autoReply.enabled`; saving appends it to the profile patch like every other panel edit (reload the profile to apply). The character cap and the two skip guards remain config-only.
 
 ### Fixed
 

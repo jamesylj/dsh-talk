@@ -70,7 +70,7 @@ DeepSeek Harness 的 voice-first 会话闭环：对它说话，听它回答。
 - **说话即打断** —— 开始说话即停止当前播报（经 client→host 的 `talk` Remote 通道）。
 - **事件播报** —— 回合完成、待审批（waterfall 安全：绝不阻塞门禁）与出错，带静音开关与可配话术。
 - **自动朗读回复** —— 默认在回合完成时朗读助手的最终回复，走与 `speak` 工具相同的朗读流水线；中止、受阻与出错的回合仍保留「Turn complete.」播报，`autoReply.enabled: false` 可在所有回合恢复旧行为（见「自动朗读回复」）。
-- **设置页签** —— 引擎/语言选择与播报开关，以追加式 profile patch 操作保存（带备份）。
+- **设置页签** —— 引擎/语言选择、播报开关与自动朗读开关，以追加式 profile patch 操作保存（带备份）。
 
 ```text
 浏览器                                 宿主
@@ -228,6 +228,7 @@ Error: dsh-talk: speak text must not be empty
 - **子代理**：`autoReply.skipSubagents: true` 永不朗读由子代理或团队代理创建的会话（`origin: subagent` 或非零委派深度）。
 - **播放串行**：新的朗读会停止并释放上一段音频播放器，并取消正在进行的浏览器 `SpeechSynthesis`，因此连续自动朗读的回合绝不会叠加。
 - **Wire**：这次朗读以 `auto-reply` 作为原因写入，`talk:speech` 投影与 `talk/latest` 都会带上它；使用本地引擎合成时，它和普通朗读一样导出文件。
+- **设置面板开关**：「设置 → 插件 → 语音」面板提供与 `autoReply.enabled` 等价的开关；保存会把它追加到 profile patch，需重载 profile 生效（字符上限与两个跳过开关仍只走配置）。
 
 ### 音频文件导出
 
@@ -246,7 +247,7 @@ Error: dsh-talk: speak text must not be empty
 |---|---|---|
 | `speak` | 工具 | 朗读文本（browser/edge-tts/piper）；支持单次引擎/音色覆盖；规范 JSON 结果 |
 | 麦克风按钮 | `conversation.input.left` 槽位 | 录音 → 转写 → 回填草稿（或提交）；按下即打断 |
-| 设置页签 | `settings.plugins.tab`（id `talk`） | 引擎/语言/播报开关；追加式保存 |
+| 设置页签 | `settings.plugins.tab`（id `talk`） | 引擎/语言/播报/自动朗读开关；追加式保存 |
 | `talk:*` | Typert Remote | `status`、`audio`、`transcribe`、`applySettings`、`interrupt`（宿主命名空间） |
 
 ## 权限与数据
@@ -279,7 +280,7 @@ Error: dsh-talk: speak text must not be empty
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc：src + tests，对照本地 harness checkout
 pnpm run typecheck:ci  # tsc：对照已发布的 0.1.7-alpha.2 类型（无 paths）
-pnpm test           # vitest：150 个测试、17 个套件
+pnpm test           # vitest：153 个测试、17 个套件
 pnpm run build      # tsc 声明 + tsdown bundle（lib/）
 pnpm run verify:self-contained  # 依赖声明全部来自 registry
 pnpm run verify:artifacts       # 构建产物 ESM 面 + client ModuleLoader 握手

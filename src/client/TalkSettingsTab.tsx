@@ -1,7 +1,8 @@
 /**
  * The talk settings tab (id `talk` in `settings.plugins.tab`): STT/TTS
- * engine and language selects, announcement switches, the speak-to-interrupt
- * toggle, and an append-only save through `talk/applySettings`.
+ * engine and language selects, announcement switches, the auto-reply
+ * read-aloud toggle, the speak-to-interrupt toggle, and an append-only save
+ * through `talk/applySettings`.
  *
  * @module dsh-talk/client/TalkSettingsTab
  */
@@ -62,6 +63,7 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
       onTurnEnd: snapshot.announce.onTurnEnd,
       onApproval: snapshot.announce.onApproval,
       onError: snapshot.announce.onError,
+      autoReplyEnabled: snapshot.autoReply.enabled,
       interrupt: snapshot.interrupt,
     }).then(result => {
       setNote(result.note)
@@ -110,6 +112,10 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
       <div className="row">
         <input type="checkbox" checked={snapshot.announce.onError} onChange={event => setSnapshot({ ...snapshot, announce: { ...snapshot.announce, onError: event.target.checked } })} />
         {t('announceOnError')}
+      </div>
+      <div className="row">
+        <input type="checkbox" checked={snapshot.autoReply.enabled} onChange={event => setSnapshot({ ...snapshot, autoReply: { ...snapshot.autoReply, enabled: event.target.checked } })} />
+        {t('autoReplyEnabled')}
       </div>
       <div className="row">
         <input type="checkbox" checked={snapshot.interrupt} onChange={event => setSnapshot({ ...snapshot, interrupt: event.target.checked })} />
