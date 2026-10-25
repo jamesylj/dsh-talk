@@ -120,6 +120,8 @@ operação ao patch do perfil (recarregue para aplicar).
 - `minimax: 1004: invalid api key`: a chave não está no ambiente nem no
   armazenamento.
 - MLX lento na primeira vez: carrega o modelo; depois reutiliza o worker.
+- Um botão do compositor não faz nada: veja o log limitado
+  `~/.dsh-talk/logs/diagnostics.log` (credenciais ocultas).
 
 ## Segurança e desenvolvimento
 

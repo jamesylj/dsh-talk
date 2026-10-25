@@ -101,6 +101,7 @@ export MINIMAX_CN_API_KEY=...
 - **鉴权错误**：`minimax: 1004: invalid api key` 表示环境变量和凭据库都没找到 Key。
 - **MLX 首次很慢**：第一次请求要加载模型，之后复用常驻 worker。
 - **长文被截断**：会话日志里看 `interrupted`；同一会话的新朗读会抢占当前朗读。
+- **点按钮没反应**：查看 `~/.dsh-talk/logs/diagnostics.log`（有界、只保留一份历史、凭据已脱敏），失败的播放/停止调用会记录在那。
 
 ## 安全与开发
 

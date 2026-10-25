@@ -120,6 +120,8 @@ guardar. Guardar añade una operación al patch del perfil (recarga para aplicar
 - `minimax: 1004: invalid api key`: la clave no está en el entorno ni en el
   almacén.
 - MLX lento la primera vez: carga el modelo; después reutiliza el worker.
+- Un botón del compositor no hace nada: revisa el log acotado
+  `~/.dsh-talk/logs/diagnostics.log` (credenciales redactadas).
 
 ## Seguridad y desarrollo
 

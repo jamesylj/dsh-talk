@@ -20,6 +20,12 @@ export interface TalkVoiceInjected {
   playLatest: (sessionId: string) => Promise<TalkPlayResult>
   /** Stop in-flight host playback. */
   stop: () => Promise<TalkStopResult>
+  /**
+   * Session id delivered to the slot registration's `inject(sessionId)` — the
+   * reliable source. The session-scope standard props may omit `sessionId` on
+   * some host lines, so this injected copy wins when present.
+   */
+  sessionKey?: string
 }
 
 /** Full component props assembled by the input-slot renderer. */
@@ -42,14 +48,15 @@ const PLAYING_POLL_MS = 1_000
  * @returns the button element.
  */
 export function TalkVoiceButton(props: TalkVoiceProps): ReactNode {
-  const { status, playLatest, stop, sessionId } = props
+  const { status, playLatest, stop, sessionId, sessionKey: injectedSessionKey } = props
   const [state, setState] = useState<TalkStatus | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | undefined>(undefined)
   const mounted = useRef(true)
 
   const speaking = state?.speaking === true
-  const sessionKey = typeof sessionId === 'string' && sessionId !== '' ? sessionId : undefined
+  const propSessionKey = typeof sessionId === 'string' && sessionId !== '' ? sessionId : undefined
+  const sessionKey = injectedSessionKey ?? propSessionKey
   const zh = typeof document !== 'undefined' && document.documentElement.lang.toLowerCase().startsWith('zh')
   const text = {
     play: zh ? '朗读最近一条回复' : 'Read the latest reply aloud',
@@ -91,11 +98,10 @@ export function TalkVoiceButton(props: TalkVoiceProps): ReactNode {
     try {
       if (speaking) {
         await stop()
-      } else if (sessionKey === undefined) {
-        setNote(text.failed)
-        return
       } else {
-        const result = await playLatest(sessionKey)
+        // An empty id asks the host for its newest live session; a concrete id
+        // (injected by the slot or supplied as a standard prop) is preferred.
+        const result = await playLatest(sessionKey ?? '')
         if (!result.spoken) setNote(result.error ?? text.nothing)
       }
       const next = await status()
@@ -107,9 +113,9 @@ export function TalkVoiceButton(props: TalkVoiceProps): ReactNode {
     }
   }
 
-  const disabled = sessionKey === undefined && !speaking
+  const disabled = busy
   const label = busy ? '…' : speaking ? '⏹' : '▶'
-  const title = busy ? text.busy : speaking ? text.stop : text.play
+  const title = busy ? text.busy : note ?? (speaking ? text.stop : text.play)
   return (
     <button
       type="button"

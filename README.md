@@ -155,6 +155,9 @@ row operation to the profile patch layer (reload to apply).
   seconds); later requests reuse the warm worker.
 - **Long read cut off**: check the session log for `interrupted`, and remember
   that a new utterance from the same session preempts the current one.
+- **A composer button seems to do nothing**: read the bounded diagnostics log
+  at `~/.dsh-talk/logs/diagnostics.log` — failed play/stop calls are recorded
+  there (credentials redacted).
 
 ## Security and development
 
@@ -162,6 +165,8 @@ row operation to the profile patch layer (reload to apply).
   sanitized before it reaches the session log or the tool result.
 - Every spoken utterance is recorded as a `plugin:dsh-talk/speech` session
   event (text, engine, reason, byte count, error) — no audio bytes in the log.
+- Interactive failures (a composer Remote call that cannot run) append a
+  bounded, secret-redacted line to `~/.dsh-talk/logs/diagnostics.log`.
 - Checks: `pnpm run typecheck && pnpm run typecheck:ci && pnpm test &&
   pnpm run build && pnpm run verify:self-contained && pnpm run verify:artifacts
   && pnpm run check:readmes && pnpm run check:lockfile`.

@@ -104,7 +104,14 @@ export async function apply(ctx: Context): Promise<void> {
       name: 'conversation.input.left',
       id: 'talk-voice',
       order: 20,
-      inject: (): TalkVoiceInjected => ({ status, playLatest, stop }),
+      // Session-scope slots receive the session id as the first `inject`
+      // argument: capture it instead of trusting the optional standard prop.
+      inject: (sessionId: unknown): TalkVoiceInjected => ({
+        status,
+        playLatest,
+        stop,
+        ...(typeof sessionId === 'string' && sessionId !== '' ? { sessionKey: sessionId } : {}),
+      }),
     }, TalkVoiceButton))
 
     slots.inject('settings.plugins.tab', () => slots.register({

@@ -29,6 +29,9 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { SPEECH_EVENT } from '../src/speech.ts'
 import type { TalkService } from '../src/service.ts'
 
+// Keep `appendDiagnostic` writes out of the developer's home during tests.
+process.env['DSH_TALK_LOG_DIR'] ??= mkdtempSync(join(tmpdir(), 'dsh-talk-logs-'))
+
 /** A subprocess provider whose spawns answer from scripted stdout/exit facts. */
 export class FakeSubprocessRuntime extends SubprocessRuntime {
   /** Scripted stdout text for the next spawn. */

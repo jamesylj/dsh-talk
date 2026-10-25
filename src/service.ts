@@ -23,6 +23,7 @@ import { resolveConfig } from './config.ts'
 import type { LocalTtsEngine } from './audio-export.ts'
 import { exportSynthesizedAudio } from './audio-export.ts'
 import { EngineFailure } from './engine.ts'
+import { appendDiagnostic, describeError } from './diagnostics.ts'
 import { findLatestAssistantText } from './auto-reply.ts'
 import { MlxEngine } from './mlx.ts'
 import { MinimaxEngine } from './minimax.ts'
@@ -346,15 +347,26 @@ export class TalkService extends TypertRemoteService {
    * @returns whether something was spoken, plus the engine/text.
    */
   async playLatest(sessionId: string): Promise<TalkPlayResult> {
-    if (typeof sessionId !== 'string' || sessionId === '') {
-      throw new Error('dsh-talk: talk/playLatest requires a non-empty sessionId')
+    if (typeof sessionId !== 'string') {
+      throw new Error('dsh-talk: talk/playLatest requires a sessionId string')
     }
-    const sessions = (this.ctx as unknown as { sessions?: SessionStore }).sessions
-    const session = sessions?.get(sessionId as never)
-    if (session === undefined) return { spoken: false, engine: null, error: 'session not found' }
+    const sessions = this.sessionStore()
+    if (sessions === undefined) {
+      void appendDiagnostic('playLatest', 'the sessions service is not visible from the talk service context')
+      return { spoken: false, engine: null, error: 'session store unavailable' }
+    }
+    const session = sessionId === '' ? this.newestLiveSession(sessions) : sessions.get(sessionId as never)
+    if (session === undefined) {
+      void appendDiagnostic('playLatest', sessionId === '' ? 'no live session' : `unknown session ${sessionId}`)
+      return { spoken: false, engine: null, error: sessionId === '' ? 'no live session to read' : 'session not found' }
+    }
     const text = findLatestAssistantText(session.snapshotEvents(), this.resolved.maxSpeakChars)
-    if (text === null) return { spoken: false, engine: null, error: 'no assistant reply to read' }
+    if (text === null) {
+      void appendDiagnostic('playLatest', `session ${String(session.id)} has no assistant reply with text`)
+      return { spoken: false, engine: null, error: 'no assistant reply to read' }
+    }
     const outcome = await this.speak(text, { reason: 'manual', session, interrupt: true })
+    if (!outcome.spoken) void appendDiagnostic('playLatest', `engine reported: ${outcome.error ?? 'unknown failure'}`)
     return {
       spoken: outcome.spoken,
       engine: outcome.engine,
@@ -364,7 +376,50 @@ export class TalkService extends TypertRemoteService {
   }
 
   /**
-   * Stop every in-flight host synthesis (the button's stop action).
+   * Resolve the host session store through the documented `ctx.get` service
+   * lookup (falling back to the context property), so an unavailable store is
+   * reported instead of surfacing as an opaque `session not found`.
+   */
+  private sessionStore(): SessionStore | undefined {
+    try {
+      const get = (this.ctx as unknown as { get?: (name: string) => unknown }).get
+      const lifted = typeof get === 'function' ? get.call(this.ctx, 'sessions') : undefined
+      const candidate = lifted ?? (this.ctx as unknown as { sessions?: SessionStore }).sessions
+      if (candidate === undefined || candidate === null) return undefined
+      return typeof (candidate as { get?: unknown }).get === 'function' ? candidate as SessionStore : undefined
+    } catch (error) {
+      void appendDiagnostic('sessionStore', describeError(error))
+      return undefined
+    }
+  }
+
+  /** The live session with the newest log offset (fallback when the client sends no id). */
+  private newestLiveSession(store: SessionStore): Session | undefined {
+    let newest: Session | undefined
+    try {
+      for (const session of store.list()) {
+        if (newest === undefined || session.seq > newest.seq) newest = session
+      }
+    } catch (error) {
+      void appendDiagnostic('newestLiveSession', describeError(error))
+    }
+    return newest
+  }
+
+  /**
+   * The play/stop button's stop verb (the `talk/stop` Remote method): abort
+   * every in-flight host synthesis and playback.
+   *
+   * @returns whether anything was stopped.
+   */
+  stop(): TalkStopResult {
+    return this.interrupt()
+  }
+
+  /**
+   * Stop in-flight host synthesis, optionally scoped to one session. `stop()`
+   * is the Remote verb; this scoped form is what the speak pipeline preempts
+   * with, so a new utterance only interrupts the SAME session.
    *
    * @param scope - optional session restriction (unscoped stops everything).
    * @returns whether anything was stopped.

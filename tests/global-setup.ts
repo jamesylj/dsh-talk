@@ -18,9 +18,12 @@ import { join } from 'node:path'
 /** Prefix of every audio-export temp directory (see `tests/harness.ts`). */
 const PREFIX = 'dsh-talk-export-'
 
+/** Prefix of every diagnostics temp directory (see `tests/harness.ts`). */
+const LOG_PREFIX = 'dsh-talk-logs-'
+
 /** Names currently present under the temp directory. */
 function exportDirs(): string[] {
-  return readdirSync(tmpdir()).filter(name => name.startsWith(PREFIX))
+  return readdirSync(tmpdir()).filter(name => name.startsWith(PREFIX) || name.startsWith(LOG_PREFIX))
 }
 
 /**

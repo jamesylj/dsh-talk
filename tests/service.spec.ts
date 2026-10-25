@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { EngineFailure } from '../src/engine.ts'
 import type { TalkService } from '../src/service.ts'
+import { TALK_INVOCATIONS } from '../src/wire.ts'
 import { appendAssistantMessage, mountHarness, speechEventsOf } from './harness.ts'
 
 interface SynthResult {
@@ -176,6 +177,67 @@ describe('TalkService.applyMode', () => {
     const harness = await mountHarness({})
     expect(() => harness.service.applyMode('sometimes' as never)).toThrow(/mode must be one of/)
     expect(harness.service.status().mode).toBe('auto')
+    await harness.ctx.fiber.dispose()
+  })
+})
+
+describe('TalkService.stop', () => {
+  it('aborts in-flight playback through the talk/stop verb', async () => {
+    const harness = await mountHarness({})
+    let rejectSynth: ((error: Error) => void) | undefined
+    installMinimax(harness.service, {
+      synthesize: async (_text, signal) => await new Promise<SynthResult>((_resolve, reject) => {
+        rejectSynth = reject
+        signal.addEventListener('abort', () => reject(new EngineFailure('minimax: interrupted', true)), { once: true })
+      }),
+    })
+    const pending = harness.service.speak('长文朗读', { reason: 'manual', session: harness.session })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(harness.service.isSpeaking()).toBe(true)
+    expect(harness.service.stop()).toEqual({ stopped: true })
+    rejectSynth?.(new EngineFailure('minimax: interrupted', true))
+    await expect(pending).resolves.toMatchObject({ spoken: false, error: 'interrupted' })
+    expect(harness.service.isSpeaking()).toBe(false)
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('reports that nothing was stopped when idle', async () => {
+    const harness = await mountHarness({})
+    expect(harness.service.stop()).toEqual({ stopped: false })
+    await harness.ctx.fiber.dispose()
+  })
+})
+
+describe('TalkService.playLatest session resolution', () => {
+  it('falls back to the newest live session when the client sends an empty id', async () => {
+    const harness = await mountHarness({})
+    appendAssistantMessage(harness.session, 1, '最新一条回复。')
+    let spoken = ''
+    installMinimax(harness.service, {
+      synthesize: async text => {
+        spoken = text
+        return okResult('audio/mpeg')
+      },
+    })
+    await expect(harness.service.playLatest('')).resolves.toMatchObject({ spoken: true, engine: 'minimax' })
+    expect(spoken).toContain('最新一条回复')
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('reports an unknown id as session not found', async () => {
+    const harness = await mountHarness({})
+    await expect(harness.service.playLatest('missing')).resolves.toMatchObject({ spoken: false, error: 'session not found' })
+    await harness.ctx.fiber.dispose()
+  })
+})
+
+describe('talk Remote descriptors', () => {
+  it('names a callable method on the talk service for every invocation', async () => {
+    const harness = await mountHarness({})
+    for (const descriptor of TALK_INVOCATIONS) {
+      const method = (harness.service as unknown as Record<string, unknown>)[descriptor.method]
+      expect(typeof method, `talk/${descriptor.method} (${descriptor.id})`).toBe('function')
+    }
     await harness.ctx.fiber.dispose()
   })
 })

@@ -1,6 +1,26 @@
 # Changelog
 
+## [0.5.3] - 2026-10-25
+
+### Fixed
+
+- **The stop button stops playback.** The `talk/stop` descriptor named a
+  `stop` method the service never had (it exposed `interrupt`), so the Remote
+  call failed at dispatch and the audio kept playing. `TalkService.stop()` is
+  now the wire verb (`interrupt` stays the scoped internal preemption), and a
+  descriptor/method coverage test fails if any invocation names a missing
+  method.
+- **The play button reads the latest reply in manual mode.** The composer
+  buttons now take the session id from the slot registration's
+  `inject(sessionId)` argument instead of relying on the optional session
+  standard prop, and `talk/playLatest` resolves the session store through
+  `ctx.get('sessions')`; an empty id falls back to the newest live session.
+  Failures the user cannot see (button title only) are now also appended to
+  `~/.dsh-talk/logs/diagnostics.log` (bounded, one rotation, credentials
+  redacted).
+
 ## [0.5.2] - 2026-10-25
+
 
 ### Fixed
 

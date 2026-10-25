@@ -120,6 +120,8 @@ export MINIMAX_CN_API_KEY=...
 - `minimax: 1004: invalid api key`: key environment या credential store में नहीं
   मिली।
 - MLX पहली बार धीमा: मॉडल लोड होता है; बाद में worker दोबारा उपयोग होता है।
+- कंपोज़र बटन कुछ न करे: सीमित डायग्नोस्टिक्स लॉग
+  `~/.dsh-talk/logs/diagnostics.log` देखें (क्रेडेंशियल छिपे रहते हैं)।
 
 ## सुरक्षा और विकास
 
