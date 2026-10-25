@@ -6,7 +6,14 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { clampRecordSeconds, foldMic, initMic } from '../src/client/present.ts'
+import {
+  claimUtteranceStart,
+  clampRecordSeconds,
+  foldMic,
+  initMic,
+  MAX_TRACKED_UTTERANCES,
+  resetUtteranceStarts,
+} from '../src/client/present.ts'
 
 describe('foldMic', () => {
   it('walks the happy path', () => {
@@ -45,5 +52,34 @@ describe('clampRecordSeconds', () => {
     expect(clampRecordSeconds(9999, 60)).toBe(600)
     expect(clampRecordSeconds(45.9, 60)).toBe(45)
     expect(clampRecordSeconds(Number.NaN, 60)).toBe(60)
+  })
+})
+
+describe('claimUtteranceStart', () => {
+  it('claims one projection frame exactly once per client runtime', () => {
+    resetUtteranceStarts()
+    expect(claimUtteranceStart('utterance-a')).toBe(true)
+    // A remount, reconnect, or baseline re-delivery of the SAME frame must not
+    // speak again.
+    expect(claimUtteranceStart('utterance-a')).toBe(false)
+    expect(claimUtteranceStart('utterance-b')).toBe(true)
+    resetUtteranceStarts()
+  })
+
+  it('rejects an empty id instead of claiming it', () => {
+    resetUtteranceStarts()
+    expect(claimUtteranceStart('')).toBe(false)
+  })
+
+  it('bounds memory by evicting the oldest claim', () => {
+    resetUtteranceStarts()
+    for (let index = 0; index <= MAX_TRACKED_UTTERANCES; index += 1) {
+      expect(claimUtteranceStart(`u-${String(index)}`)).toBe(true)
+    }
+    // Claiming past the bound evicted the oldest claim, so its frame can be
+    // claimed again; the newest still cannot.
+    expect(claimUtteranceStart('u-0')).toBe(true)
+    expect(claimUtteranceStart(`u-${String(MAX_TRACKED_UTTERANCES)}`)).toBe(false)
+    resetUtteranceStarts()
   })
 })

@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '../projection.ts'
-import { foldMic, initMic, type MicViewModel } from './present.ts'
+import { claimUtteranceStart, foldMic, initMic, type MicViewModel } from './present.ts'
 import { advanceSilence, isSpeechFrame, rmsOf, silenceTrips } from './vad.ts'
 import { selectBrowserVoice } from './browserVoice.ts'
 import type { TalkAudio, TalkInterruptResult, TalkStatus, TalkTranscript } from '../wire.ts'
@@ -119,6 +119,43 @@ function releasePlayer(active: ActivePlayer | null): void {
     URL.revokeObjectURL(active.url)
   } catch {
     // The URL is already revoked.
+  }
+}
+
+/**
+ * The one active player for this CLIENT RUNTIME, not for one component
+ * instance. Playback outlives slot remounts (session-scope rebinds, HMR client
+ * reloads): the component's refs die with a remount, but the utterance must not
+ * restart — and a re-run of the effect from the same projection frame must not
+ * stack a second player.
+ *
+ * The epoch drops a late `talk/audio` response that a newer utterance
+ * superseded; the claim guard (present.ts) drops a re-delivered frame.
+ */
+let activePlayer: ActivePlayer | null = null
+
+/** Monotonic playback epoch; a newer utterance invalidates older fetches. */
+let playbackEpoch = 0
+
+/** Local Storage key for the bounded playback breadcrumbs (diagnostics only). */
+const PLAYBACK_DEBUG_KEY = 'dsh-talk:playback-debug'
+
+/**
+ * Append one breadcrumb to a bounded Local Storage ring. This is the client
+ * trace readable from disk when a user reports playback anomalies; it never
+ * contains utterance text, only kinds/ids/timestamps.
+ *
+ * @param entry - one play/skip/mount/unmount record.
+ */
+function recordPlaybackBreadcrumb(entry: Record<string, unknown>): void {
+  try {
+    const storage = globalThis.localStorage
+    if (storage === undefined) return
+    const list = JSON.parse(storage.getItem(PLAYBACK_DEBUG_KEY) ?? '[]') as unknown[]
+    list.push({ at: Date.now(), ...entry })
+    storage.setItem(PLAYBACK_DEBUG_KEY, JSON.stringify(list.slice(-120)))
+  } catch {
+    // Diagnostics must never break playback (private mode, quota, disabled storage).
   }
 }
 
@@ -461,23 +498,22 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
     } | null | undefined
     : undefined
   const speech = readProjection === undefined ? undefined : readProjection('talk:speech')
-  const playedRef = useRef<string | null>(null)
-  const playerRef = useRef<ActivePlayer | null>(null)
-  // Bumped whenever an utterance starts or the component tears down; an
-  // `audio()` response carrying an older token is dropped instead of playing.
-  const playbackTokenRef = useRef(0)
-  // Playback is strictly serial. Each new utterance first stops whatever the
-  // previous one started — the local <audio> is paused and its object URL
-  // revoked, and any browser speech is cancelled — so two quick auto-reply
-  // turns can never overlap. No cleanup is attached to this effect on purpose:
-  // a re-render can hand us a fresh projection object with the SAME
-  // utteranceId, and a per-run cleanup would silence the playing audio.
+  // Playback is strictly serial and survives this component: each new utterance
+  // first stops whatever the previous one started — the local <audio> is paused
+  // and its object URL revoked, and any browser speech is cancelled — so two
+  // quick auto-reply turns can never overlap. The SAME projected utterance is
+  // claimed once per client runtime, so a remount or a re-delivered projection
+  // baseline cannot replay an old reply (the reported repeat loop).
   useEffect(() => {
-    if (speech === null || speech === undefined || speech.utteranceId === playedRef.current) return
-    playedRef.current = speech.utteranceId
-    const token = (playbackTokenRef.current += 1)
-    releasePlayer(playerRef.current)
-    playerRef.current = null
+    if (speech === null || speech === undefined) return
+    if (!claimUtteranceStart(speech.utteranceId)) {
+      recordPlaybackBreadcrumb({ kind: 'skip-duplicate', id: speech.utteranceId })
+      return
+    }
+    recordPlaybackBreadcrumb({ kind: 'play', id: speech.utteranceId, engine: speech.engine ?? 'unknown' })
+    const epoch = (playbackEpoch += 1)
+    releasePlayer(activePlayer)
+    activePlayer = null
     // A queued/previous SpeechSynthesis utterance must not overlap this one,
     // whichever engine produced it.
     if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
@@ -495,7 +531,7 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
       return
     }
     void audio(speech.utteranceId).then(entry => {
-      if (entry === null || token !== playbackTokenRef.current) return
+      if (entry === null || epoch !== playbackEpoch) return
       let url: string | null = null
       try {
         const binary = atob(entry.data)
@@ -505,12 +541,12 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
         const player = new Audio(url)
         const active: ActivePlayer = { player, url }
         const releaseActive = (): void => {
-          if (playerRef.current === active) playerRef.current = null
+          if (activePlayer === active) activePlayer = null
           releasePlayer(active)
         }
         player.addEventListener('ended', releaseActive)
         player.addEventListener('error', releaseActive)
-        playerRef.current = active
+        if (epoch === playbackEpoch) activePlayer = active
         void player.play().catch(releaseActive)
       } catch {
         // A failed decode/play must not leak the URL we may have created.
@@ -525,15 +561,16 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
     }).catch(() => {})
   }, [speech, audio])
 
-  // Unmount cleanup: stop the player, revoke its URL, cancel synthesis, and
-  // invalidate any in-flight `audio()` response so nothing starts playing into
-  // a torn-down component (or leaks a URL created after unmount).
-  useEffect(() => () => {
-    playbackTokenRef.current += 1
-    releasePlayer(playerRef.current)
-    playerRef.current = null
-    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+  // Mount/unmount breadcrumbs only. Playback deliberately outlives the mount:
+  // cancelling here made every remount cut short or replay the last utterance,
+  // which produced the audible repeat loop.
+  useEffect(() => {
+    recordPlaybackBreadcrumb({ kind: 'mount' })
+    return () => {
+      recordPlaybackBreadcrumb({ kind: 'unmount' })
+    }
   }, [])
+
 
   const disabled = settings === undefined || settings.record.enabled !== true
   const label = recording
