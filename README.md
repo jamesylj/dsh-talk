@@ -191,15 +191,15 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). `cord
 | `stt.language` | `auto` | BCP-47 language or `auto` |
 | `stt.interim` | `true` | Show interim transcriptions (Web Speech) |
 | `stt.silenceFinaliseMs` | `4000` | Stop continuous Web Speech recognition after this many milliseconds without speech (500..15000) |
-| `stt.funasr.url` | *(none)* | FunASR inference endpoint; required when the engine is `funasr` |
-| `stt.whisper.modelPath` | *(none)* | whisper.cpp model; required when the engine is `whisper` |
+| `stt.funasr.url` | *(none)* | FunASR inference endpoint; required when the engine is `funasr`; an empty value counts as not configured |
+| `stt.whisper.modelPath` | *(none)* | whisper.cpp model; required when the engine is `whisper`; an empty value counts as not configured |
 | `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `piper`; auto prefers piper, then edge-tts, then the browser voice |
 | `tts.rate` | `0` | Rate offset in percent (-50..50) for edge-tts/piper |
 | `tts.fallbackToBrowser` | `true` | Fall back to the browser voice when a local engine fails |
 | `tts.browser.voiceName` | *(none)* | Preferred browser voice name; an unknown name uses the platform default |
 | `tts.browser.rate` | `1` | Browser SpeechSynthesis rate (0.1..10) |
 | `tts.browser.pitch` | `1` | Browser SpeechSynthesis pitch (0..2) |
-| `tts.piper.modelPath` | *(none)* | piper voice model; required when the engine is `piper` |
+| `tts.piper.modelPath` | *(none)* | piper voice model; required when the engine is `piper`; an empty value counts as not configured |
 | `tts.export.enabled` | `true` | Write locally synthesized audio to a file and return its path as `audioPath` |
 | `tts.export.dir` | `<home>/.dsh-talk/audio` | Export directory; `~` = home, a relative path resolves under home (never the workspace) |
 | `tts.export.maxFiles` | `20` | Files retained in the export directory, counting the one just written (1..1000) |
@@ -281,7 +281,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc: src + tests against the local harness checkout
 pnpm run typecheck:ci  # tsc against the published 0.1.7-alpha.2 types (no paths)
-pnpm test           # vitest: 153 tests, 17 suites
+pnpm test           # vitest: 154 tests, 17 suites
 pnpm run build      # tsc declarations + tsdown bundles (lib/)
 pnpm run verify:self-contained  # dependency specs resolve from the registry
 pnpm run verify:artifacts       # built ESM faces + client ModuleLoader handshake

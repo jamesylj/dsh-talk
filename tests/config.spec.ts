@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Config, resolveConfig, MAX_AUTO_REPLY_MAX_CHARS, MAX_RECORD_SECONDS } from '../src/config.ts'
+import { resolveSttEngine, resolveTtsEngine } from '../src/service.ts'
 
 describe('Config schema', () => {
   it('fills every leaf default on an empty input', () => {
@@ -126,5 +127,22 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ autoReply: { maxChars: MAX_AUTO_REPLY_MAX_CHARS + 1 } })).toThrow(/autoReply\.maxChars/u)
     expect(() => resolveConfig({ autoReply: { reasons: [] } })).toThrow(/at least one reason/u)
     expect(() => resolveConfig({ autoReply: { reasons: ['sometimes' as 'completed'] } })).toThrow(/autoReply\.reasons/u)
+  })
+
+  it('treats empty optional engine paths as not configured, so auto picks a usable engine', () => {
+    const resolved = resolveConfig({})
+    // Empty schema defaults must not read as "configured" (they used to make
+    // auto select piper/whisper/funasr and fail at the first utterance).
+    expect(resolved.piperModelPath).toBeNull()
+    expect(resolved.whisperModelPath).toBeNull()
+    expect(resolved.funasrUrl).toBeNull()
+    expect(resolved.ttsVoice).toBeNull()
+    expect(resolved.browserVoiceName).toBeNull()
+    expect(resolveTtsEngine(undefined, resolved)).toBe('edge-tts')
+    expect(resolveSttEngine(resolved)).toBe('web')
+    // An explicitly selected local engine still fails loud on a blank path.
+    expect(() => resolveConfig({ tts: { engine: 'piper', piper: { modelPath: '' } } })).toThrow(/piper/u)
+    expect(() => resolveConfig({ stt: { engine: 'whisper', whisper: { modelPath: '' } } })).toThrow(/whisper/u)
+    expect(() => resolveConfig({ stt: { engine: 'funasr', funasr: { url: '' } } })).toThrow(/funasr/u)
   })
 })

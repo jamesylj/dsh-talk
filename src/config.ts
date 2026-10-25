@@ -430,6 +430,21 @@ function nullableStringOf(value: unknown, label: string): string | null {
   return value
 }
 
+/**
+ * Resolve an optional path/name where an EMPTY string means "not configured".
+ * The Schemastery schema carries plain `z.string()` leaf defaults (`''`) for
+ * optional engine paths, so treating `''` as a set value made `auto` select an
+ * engine with no model/endpoint and fail at the first utterance.
+ *
+ * @param value - raw config leaf.
+ * @param label - config path for the error message.
+ * @returns the non-empty string, or null for absent/empty.
+ */
+function nullableNonEmptyStringOf(value: unknown, label: string): string | null {
+  const text = nullableStringOf(value, label)
+  return text === null || text === '' ? null : text
+}
+
 function booleanOf(value: unknown, fallback: boolean, label: string): boolean {
   if (value === undefined) return fallback
   if (typeof value !== 'boolean') throw new TypeError(`dsh-talk: config.${label} must be a boolean`)
@@ -510,21 +525,21 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const sttInterim = booleanOf(stt.interim, true, 'stt.interim')
   const sttSilenceFinaliseMs = numberOf(stt.silenceFinaliseMs, DEFAULT_SILENCE_FINALISE_MS, 500, 15000, 'stt.silenceFinaliseMs')
 
-  const funasrUrl = nullableStringOf(stt.funasr?.url, 'stt.funasr.url')
-  const funasrModel = nullableStringOf(stt.funasr?.model, 'stt.funasr.model')
+  const funasrUrl = nullableNonEmptyStringOf(stt.funasr?.url, 'stt.funasr.url')
+  const funasrModel = nullableNonEmptyStringOf(stt.funasr?.model, 'stt.funasr.model')
   const whisperCommand = stringOf(stt.whisper?.command, 'whisper-cli', 'stt.whisper.command')
   if (whisperCommand.length === 0) throw new Error('dsh-talk: config.stt.whisper.command must not be empty')
-  const whisperModelPath = nullableStringOf(stt.whisper?.modelPath, 'stt.whisper.modelPath')
-  const whisperLanguage = nullableStringOf(stt.whisper?.language, 'stt.whisper.language')
+  const whisperModelPath = nullableNonEmptyStringOf(stt.whisper?.modelPath, 'stt.whisper.modelPath')
+  const whisperLanguage = nullableNonEmptyStringOf(stt.whisper?.language, 'stt.whisper.language')
 
   const ttsEngineRaw = tts.engine ?? 'auto'
   if (!isTtsEngine(ttsEngineRaw)) {
     throw new Error(`dsh-talk: config.tts.engine must be one of "auto", "browser", "edge-tts", "piper", got ${JSON.stringify(ttsEngineRaw)}`)
   }
-  const ttsVoice = nullableStringOf(tts.voice, 'tts.voice')
+  const ttsVoice = nullableNonEmptyStringOf(tts.voice, 'tts.voice')
   const ttsRate = numberOf(tts.rate, 0, -50, 50, 'tts.rate')
   const ttsFallbackToBrowser = booleanOf(tts.fallbackToBrowser, true, 'tts.fallbackToBrowser')
-  const browserVoiceName = nullableStringOf(tts.browser?.voiceName, 'tts.browser.voiceName')
+  const browserVoiceName = nullableNonEmptyStringOf(tts.browser?.voiceName, 'tts.browser.voiceName')
   const browserRate = numberOf(tts.browser?.rate, 1, 0.1, 10, 'tts.browser.rate')
   const browserPitch = numberOf(tts.browser?.pitch, 1, 0, 2, 'tts.browser.pitch')
   const edgeTtsCommand = stringOf(tts.edgeTts?.command, 'edge-tts', 'tts.edgeTts.command')
@@ -532,7 +547,7 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const edgeTtsVoice = stringOf(tts.edgeTts?.voice, 'en-US-JennyNeural', 'tts.edgeTts.voice')
   const piperCommand = stringOf(tts.piper?.command, 'piper', 'tts.piper.command')
   if (piperCommand.length === 0) throw new Error('dsh-talk: config.tts.piper.command must not be empty')
-  const piperModelPath = nullableStringOf(tts.piper?.modelPath, 'tts.piper.modelPath')
+  const piperModelPath = nullableNonEmptyStringOf(tts.piper?.modelPath, 'tts.piper.modelPath')
   const ttsExportEnabled = booleanOf(tts.export?.enabled, true, 'tts.export.enabled')
   const ttsExportDir = resolveExportDir(tts.export?.dir)
   const ttsExportMaxFiles = numberOf(

@@ -190,15 +190,15 @@ Error: dsh-talk: speak text must not be empty
 | `stt.language` | `auto` | BCP-47 语言或 `auto` |
 | `stt.interim` | `true` | 显示中间转写（Web Speech） |
 | `stt.silenceFinaliseMs` | `4000` | 连续 Web Speech 在没有语音活动达到此毫秒数后停止（500..15000） |
-| `stt.funasr.url` | *(无)* | FunASR 推理端点；引擎为 `funasr` 时必填 |
-| `stt.whisper.modelPath` | *(无)* | whisper.cpp 模型；引擎为 `whisper` 时必填 |
+| `stt.funasr.url` | *(无)* | FunASR 推理端点；引擎为 `funasr` 时必填；空值视为未配置 |
+| `stt.whisper.modelPath` | *(无)* | whisper.cpp 模型；引擎为 `whisper` 时必填；空值视为未配置 |
 | `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `piper`；auto 优先 piper，其次 edge-tts，最后浏览器语音 |
 | `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50） |
 | `tts.fallbackToBrowser` | `true` | 本地引擎失败时回退浏览器语音 |
 | `tts.browser.voiceName` | *(无)* | 首选浏览器语音名称；未找到时使用平台默认语音 |
 | `tts.browser.rate` | `1` | 浏览器 SpeechSynthesis 语速（0.1..10） |
 | `tts.browser.pitch` | `1` | 浏览器 SpeechSynthesis 音高（0..2） |
-| `tts.piper.modelPath` | *(无)* | piper 语音模型；引擎为 `piper` 时必填 |
+| `tts.piper.modelPath` | *(无)* | piper 语音模型；引擎为 `piper` 时必填；空值视为未配置 |
 | `tts.export.enabled` | `true` | 把本地合成的音频写入文件，并以 `audioPath` 返回路径 |
 | `tts.export.dir` | `<home>/.dsh-talk/audio` | 导出目录；`~` = 家目录，相对路径按家目录解析（绝不落在工作区） |
 | `tts.export.maxFiles` | `20` | 导出目录保留的文件数，含刚写入的那个（1..1000） |
@@ -280,7 +280,7 @@ Error: dsh-talk: speak text must not be empty
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc：src + tests，对照本地 harness checkout
 pnpm run typecheck:ci  # tsc：对照已发布的 0.1.7-alpha.2 类型（无 paths）
-pnpm test           # vitest：153 个测试、17 个套件
+pnpm test           # vitest：154 个测试、17 个套件
 pnpm run build      # tsc 声明 + tsdown bundle（lib/）
 pnpm run verify:self-contained  # 依赖声明全部来自 registry
 pnpm run verify:artifacts       # 构建产物 ESM 面 + client ModuleLoader 握手

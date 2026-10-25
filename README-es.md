@@ -182,15 +182,15 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 | `stt.language` | `auto` | Idioma BCP-47 o `auto` |
 | `stt.interim` | `true` | Mostrar transcripciones intermedias (Web Speech) |
 | `stt.silenceFinaliseMs` | `4000` | Detener Web Speech continuo tras estos milisegundos sin voz (500..15000) |
-| `stt.funasr.url` | *(ninguna)* | Endpoint de inferencia FunASR; obligatorio con el motor `funasr` |
-| `stt.whisper.modelPath` | *(ninguna)* | Modelo whisper.cpp; obligatorio con el motor `whisper` |
+| `stt.funasr.url` | *(ninguna)* | Endpoint de inferencia FunASR; obligatorio con el motor `funasr`; un valor vacío cuenta como no configurado |
+| `stt.whisper.modelPath` | *(ninguna)* | Modelo whisper.cpp; obligatorio con el motor `whisper`; un valor vacío cuenta como no configurado |
 | `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `piper`; auto prefiere piper, luego edge-tts, luego la voz del navegador |
 | `tts.rate` | `0` | Desplazamiento de velocidad en porcentaje (-50..50) para edge-tts/piper |
 | `tts.fallbackToBrowser` | `true` | Caer a la voz del navegador cuando falla un motor local |
 | `tts.browser.voiceName` | *(ninguna)* | Nombre de voz preferido del navegador; si no existe se usa la voz predeterminada |
 | `tts.browser.rate` | `1` | Velocidad de SpeechSynthesis del navegador (0.1..10) |
 | `tts.browser.pitch` | `1` | Tono de SpeechSynthesis del navegador (0..2) |
-| `tts.piper.modelPath` | *(ninguna)* | Modelo de voz piper; obligatorio con el motor `piper` |
+| `tts.piper.modelPath` | *(ninguna)* | Modelo de voz piper; obligatorio con el motor `piper`; un valor vacío cuenta como no configurado |
 | `tts.export.enabled` | `true` | Escribir el audio sintetizado localmente en un archivo y devolver su ruta como `audioPath` |
 | `tts.export.dir` | `<home>/.dsh-talk/audio` | Directorio de exportación; `~` = home, una ruta relativa se resuelve bajo home (nunca el workspace) |
 | `tts.export.maxFiles` | `20` | Archivos conservados en el directorio, contando el recién escrito (1..1000) |
@@ -272,7 +272,7 @@ Cada locución sintetizada por un motor local (`edge-tts`, `piper`) se escribe e
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc: src + tests contra el checkout local del harness
 pnpm run typecheck:ci  # tsc contra los tipos publicados 0.1.7-alpha.2 (sin paths)
-pnpm test           # vitest: 153 tests, 17 suites
+pnpm test           # vitest: 154 tests, 17 suites
 pnpm run build      # declaraciones tsc + bundles tsdown (lib/)
 pnpm run verify:self-contained  # las specs de dependencias resuelven desde el registry
 pnpm run verify:artifacts       # caras ESM construidas + handshake ModuleLoader del cliente

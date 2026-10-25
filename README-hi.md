@@ -182,15 +182,15 @@ Error: dsh-talk: speak text must not be empty
 | `stt.language` | `auto` | BCP-47 भाषा या `auto` |
 | `stt.interim` | `true` | अंतरिम ट्रांसक्रिप्शन दिखाएँ (Web Speech) |
 | `stt.silenceFinaliseMs` | `4000` | इतनी मिलीसेकंड तक आवाज़ न आने पर लगातार Web Speech रोकें (500..15000) |
-| `stt.funasr.url` | *(कोई नहीं)* | FunASR इन्फ़रेंस एंडपॉइंट; `funasr` इंजन के लिए आवश्यक |
-| `stt.whisper.modelPath` | *(कोई नहीं)* | whisper.cpp मॉडल; `whisper` इंजन के लिए आवश्यक |
+| `stt.funasr.url` | *(कोई नहीं)* | FunASR इन्फ़रेंस एंडपॉइंट; `funasr` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
+| `stt.whisper.modelPath` | *(कोई नहीं)* | whisper.cpp मॉडल; `whisper` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
 | `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `piper`; auto पहले piper, फिर edge-tts, फिर ब्राउज़र वॉइस |
 | `tts.rate` | `0` | edge-tts/piper के लिए गति ऑफ़सेट प्रतिशत में (-50..50) |
 | `tts.fallbackToBrowser` | `true` | स्थानीय इंजन विफल होने पर ब्राउज़र वॉइस पर गिरें |
 | `tts.browser.voiceName` | *(कोई नहीं)* | पसंदीदा ब्राउज़र वॉइस नाम; न मिलने पर प्लेटफ़ॉर्म डिफ़ॉल्ट उपयोग होता है |
 | `tts.browser.rate` | `1` | ब्राउज़र SpeechSynthesis गति (0.1..10) |
 | `tts.browser.pitch` | `1` | ब्राउज़र SpeechSynthesis पिच (0..2) |
-| `tts.piper.modelPath` | *(कोई नहीं)* | piper वॉइस मॉडल; `piper` इंजन के लिए आवश्यक |
+| `tts.piper.modelPath` | *(कोई नहीं)* | piper वॉइस मॉडल; `piper` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
 | `tts.export.enabled` | `true` | स्थानीय रूप से सिंथेसाइज़्ड ऑडियो को फ़ाइल में लिखें और उसका पथ `audioPath` के रूप में लौटाएँ |
 | `tts.export.dir` | `<home>/.dsh-talk/audio` | निर्यात निर्देशिका; `~` = home, सापेक्ष पथ home के अंतर्गत हल होता है (कार्यस्थान में कभी नहीं) |
 | `tts.export.maxFiles` | `20` | निर्देशिका में रखी फ़ाइलें, अभी लिखी गई सहित (1..1000) |
@@ -272,7 +272,7 @@ Error: dsh-talk: speak text must not be empty
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc: src + tests स्थानीय हार्नेस चेकआउट के विरुद्ध
 pnpm run typecheck:ci  # tsc प्रकाशित 0.1.7-alpha.2 प्रकारों के विरुद्ध (बिना paths)
-pnpm test           # vitest: 153 टेस्ट, 17 सुइट
+pnpm test           # vitest: 154 टेस्ट, 17 सुइट
 pnpm run build      # tsc घोषणाएँ + tsdown बंडल (lib/)
 pnpm run verify:self-contained  # निर्भरता स्पेक registry से हल होती हैं
 pnpm run verify:artifacts       # निर्मित ESM फ़ेस + क्लाइंट ModuleLoader हैंडशेक

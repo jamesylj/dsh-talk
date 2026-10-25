@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.27] - 2026-10-25
 
 ### Added
 
@@ -11,6 +11,7 @@
 
 - **Live client playback is restored on DSH 0.2.1+ hosts.** Those hosts do not know the `dsh-talk/speech` vocabulary, so the speech gate appended nothing and the `talk:speech` projection stayed empty — even the `speak` tool was silent. Speech is now logged as an experimental ignorable plugin record named `plugin:dsh-talk/speech` (the plugin-record type grammar is `plugin:` followed by lowercase slash segments) through the host's `appendPluginRecord` API, and the projection folds both that record and the plain `dsh-talk/speech` event, validating a restored payload before it reaches the wire. Hosts with neither channel keep the documented degradation (per-session appended/skipped counters, `talk/latest`).
 - **Client playback is serialized.** A new utterance now stops and releases the previous audio player and cancels any in-flight browser `SpeechSynthesis`, so consecutive auto-read turns never overlap.
+- **`auto` no longer selects an unconfigured local engine.** The schema leaves `stt.funasr.url`, `stt.whisper.modelPath` and `tts.piper.modelPath` as empty strings by default, and the resolver treated `""` as a configured value: `auto` tried piper/whisper/funasr first and only fell back after a failed spawn (an `error` on every utterance, e.g. `spawn piper ENOENT`). Empty values now resolve to null, so `auto` picks the first actually addressable engine (edge-tts, Web Speech, browser voice); an explicitly selected local engine with an empty path still fails loud at load.
 - Compatibility: the plugin-record transport requires a DSH `0.2.1+` host; envelope-less `0.1.x` hosts still get no append and keep the documented fallback.
 
 ## [0.3.26] - 2026-10-24
