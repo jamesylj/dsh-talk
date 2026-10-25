@@ -184,7 +184,14 @@ Todos os ajustes são campos `Config` do Schemastery (alteráveis pelo cordis.ym
 | `stt.silenceFinaliseMs` | `4000` | Parar o Web Speech contínuo após estes milissegundos sem fala (500..15000) |
 | `stt.funasr.url` | *(nenhuma)* | Endpoint de inferência FunASR; obrigatório com o motor `funasr`; um valor vazio conta como não configurado |
 | `stt.whisper.modelPath` | *(nenhuma)* | Modelo whisper.cpp; obrigatório com o motor `whisper`; um valor vazio conta como não configurado |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`; auto prefere piper, depois edge-tts, depois a voz do navegador; `macos` usa a voz do sistema (somente macOS) |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`; auto prefere piper, depois edge-tts, depois a voz do navegador; `macos` usa a voz do sistema (somente macOS); `mlx` roda localmente um Qwen3-TTS quantizado em Apple Silicon |
+| `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | Interpretador Python do venv MLX (inferência local em Apple Silicon) |
+| `tts.mlx.script` | *(incluído)* | Script worker; vazio = o `worker/mlx_tts.py` incluído |
+| `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | Diretório do modelo Qwen3-TTS quantizado ou repo id do HF |
+| `tts.mlx.voice` | `Vivian` | Voz CustomVoice do Qwen3-TTS |
+| `tts.mlx.language` | `Chinese` | Idioma passado ao modelo |
+| `tts.mlx.chunkChars` | `100` | Tamanho do trecho (20..500); menor = primeiro áudio mais rápido |
+| `tts.mlx.player` | `/usr/bin/afplay` | Player do sistema que toca cada trecho enquanto o próximo é sintetizado |
 | `tts.rate` | `0` | Deslocamento de velocidade em porcentagem (-50..50) para edge-tts/piper; também escala a velocidade do `say` no macOS |
 | `tts.macos.command` | `/usr/bin/say` | Executável `say` do macOS (local e offline; o motor `macos` só existe no macOS) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Nome da voz instalada exatamente como `say -v '?'` lista; um nome desconhecido é rejeitado em vez de usar a voz padrão silenciosamente |

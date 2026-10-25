@@ -24,7 +24,7 @@ import { isAbsolute, join, normalize, sep } from 'node:path'
 import { sanitizeText } from './sanitize.ts'
 
 /** Local engines whose audio can be exported to a file. */
-export type LocalTtsEngine = 'edge-tts' | 'macos' | 'piper'
+export type LocalTtsEngine = 'edge-tts' | 'macos' | 'mlx' | 'piper'
 
 /** Export state reported with one speak outcome. */
 export type AudioExportState =

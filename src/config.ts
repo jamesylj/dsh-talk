@@ -8,13 +8,15 @@
  */
 
 import z from '@deepseek-ai/schemastery'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { resolveExportDir } from './audio-export.ts'
 
 /** Speech-to-text engines. `auto` prefers a configured local engine, then Web Speech. */
 export type SttEngine = 'auto' | 'web' | 'funasr' | 'whisper'
 
 /** Text-to-speech engines. `auto` prefers piper, then edge-tts; `macos` is the system voice. */
-export type TtsEngine = 'auto' | 'browser' | 'edge-tts' | 'macos' | 'piper'
+export type TtsEngine = 'auto' | 'browser' | 'edge-tts' | 'macos' | 'mlx' | 'piper'
 
 /** Turn-end reasons that can trigger auto-read of the assistant's final reply. */
 export type AutoReplyReason = 'completed' | 'max-tokens'
@@ -60,6 +62,30 @@ export const MIN_MACOS_RATE = 60
 
 /** Upper bound for the macOS speech-rate anchor (words per minute). */
 export const MAX_MACOS_RATE = 400
+
+/** Default interpreter of the MLX TTS venv (`~/.dsh-talk/mlx-tts-venv`). */
+export const DEFAULT_MLX_COMMAND = join(homedir(), '.dsh-talk', 'mlx-tts-venv', 'bin', 'python')
+
+/** Default quantized Qwen3-TTS model directory. */
+export const DEFAULT_MLX_MODEL = join(homedir(), '.dsh-talk', 'models', 'qwen3-tts-0.6b-4bit')
+
+/** Default MLX voice (Qwen3-TTS CustomVoice Mandarin speaker). */
+export const DEFAULT_MLX_VOICE = 'Vivian'
+
+/** Default MLX language argument. */
+export const DEFAULT_MLX_LANGUAGE = 'Chinese'
+
+/** Default MLX sentence-chunk size in characters. */
+export const DEFAULT_MLX_CHUNK_CHARS = 100
+
+/** Lower bound for the MLX chunk size. */
+export const MIN_MLX_CHUNK_CHARS = 20
+
+/** Upper bound for the MLX chunk size. */
+export const MAX_MLX_CHUNK_CHARS = 500
+
+/** Default system player used for MLX streaming playback. */
+export const DEFAULT_MLX_PLAYER = '/usr/bin/afplay'
 
 /** Default in-memory audio cache cap in bytes (8 MiB). */
 export const DEFAULT_MAX_AUDIO_CACHE_BYTES = 8 * 1024 * 1024
@@ -152,6 +178,24 @@ export interface TtsExportConfig {
   maxAgeMinutes?: number
 }
 
+/** MLX (Qwen3-TTS) local inference engine configuration. */
+export interface TtsMlxConfig {
+  /** Python interpreter of the MLX venv (default `~/.dsh-talk/mlx-tts-venv/bin/python`). */
+  command?: string
+  /** Worker script path; unset = the bundled `worker/mlx_tts.py`. */
+  script?: string
+  /** Model directory or HF repo id (default `~/.dsh-talk/models/qwen3-tts-0.6b-4bit`). */
+  model?: string
+  /** CustomVoice speaker name (default "Vivian"). */
+  voice?: string
+  /** Language argument passed to the model (default "Chinese"). */
+  language?: string
+  /** Sentence-chunk size in characters (default 100, 20..500). */
+  chunkChars?: number
+  /** System player used for streaming playback (default "/usr/bin/afplay"). */
+  player?: string
+}
+
 /** macOS system voice (`say`) engine configuration. */
 export interface TtsMacosConfig {
   /** `say` executable (default "/usr/bin/say"). */
@@ -197,6 +241,8 @@ export interface TtsConfig {
   }
   /** macOS system voice (`say`, local and offline; macOS hosts only). */
   macos?: TtsMacosConfig
+  /** MLX local inference engine (Qwen3-TTS, Apple Silicon). */
+  mlx?: TtsMlxConfig
   /** Exported-audio files: where they go and how the directory is bounded. */
   export?: TtsExportConfig
 }
@@ -314,6 +360,20 @@ export interface ResolvedConfig {
   macosVoice: string
   /** macOS speech-rate anchor in words per minute. */
   macosRate: number
+  /** Python interpreter of the MLX TTS venv. */
+  mlxCommand: string
+  /** Worker script path, or null for the bundled one. */
+  mlxScript: string | null
+  /** MLX model directory or HF repo id. */
+  mlxModel: string
+  /** MLX CustomVoice speaker. */
+  mlxVoice: string
+  /** MLX language argument. */
+  mlxLanguage: string
+  /** MLX sentence-chunk size in characters. */
+  mlxChunkChars: number
+  /** System player used for MLX playback. */
+  mlxPlayer: string
   /** piper executable. */
   piperCommand: string
   /** piper model path, or null. */
@@ -387,7 +447,7 @@ export const Config: z<Config> = z.object({
     }),
   }),
   tts: z.object({
-    engine: z.union(['auto', 'browser', 'edge-tts', 'macos', 'piper'] as const).default('auto'),
+    engine: z.union(['auto', 'browser', 'edge-tts', 'macos', 'mlx', 'piper'] as const).default('auto'),
     voice: z.string(),
     rate: z.number().min(-50).max(50).default(0),
     fallbackToBrowser: z.boolean().default(true),
@@ -408,6 +468,15 @@ export const Config: z<Config> = z.object({
       command: z.string().default(DEFAULT_MACOS_COMMAND),
       voice: z.string().default(DEFAULT_MACOS_VOICE),
       rate: z.number().min(MIN_MACOS_RATE).max(MAX_MACOS_RATE).default(DEFAULT_MACOS_RATE),
+    }),
+    mlx: z.object({
+      command: z.string().default(DEFAULT_MLX_COMMAND),
+      script: z.string(),
+      model: z.string().default(DEFAULT_MLX_MODEL),
+      voice: z.string().default(DEFAULT_MLX_VOICE),
+      language: z.string().default(DEFAULT_MLX_LANGUAGE),
+      chunkChars: z.number().min(MIN_MLX_CHUNK_CHARS).max(MAX_MLX_CHUNK_CHARS).default(DEFAULT_MLX_CHUNK_CHARS),
+      player: z.string().default(DEFAULT_MLX_PLAYER),
     }),
     export: z.object({
       enabled: z.boolean().default(true),
@@ -441,7 +510,7 @@ export const Config: z<Config> = z.object({
 })
 
 const STT_ENGINES = ['auto', 'web', 'funasr', 'whisper'] as const
-const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'macos', 'piper'] as const
+const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'macos', 'mlx', 'piper'] as const
 const AUTO_REPLY_REASONS = ['completed', 'max-tokens'] as const
 
 function isSttEngine(value: unknown): value is SttEngine {
@@ -572,7 +641,7 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
 
   const ttsEngineRaw = tts.engine ?? 'auto'
   if (!isTtsEngine(ttsEngineRaw)) {
-    throw new Error(`dsh-talk: config.tts.engine must be one of "auto", "browser", "edge-tts", "macos", "piper", got ${JSON.stringify(ttsEngineRaw)}`)
+    throw new Error(`dsh-talk: config.tts.engine must be one of "auto", "browser", "edge-tts", "macos", "mlx", "piper", got ${JSON.stringify(ttsEngineRaw)}`)
   }
   const ttsVoice = nullableNonEmptyStringOf(tts.voice, 'tts.voice')
   const ttsRate = numberOf(tts.rate, 0, -50, 50, 'tts.rate')
@@ -591,6 +660,18 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const macosVoice = stringOf(tts.macos?.voice, DEFAULT_MACOS_VOICE, 'tts.macos.voice')
   if (macosVoice.trim().length === 0) throw new Error('dsh-talk: config.tts.macos.voice must not be empty')
   const macosRate = numberOf(tts.macos?.rate, DEFAULT_MACOS_RATE, MIN_MACOS_RATE, MAX_MACOS_RATE, 'tts.macos.rate')
+  const mlxCommand = stringOf(tts.mlx?.command, DEFAULT_MLX_COMMAND, 'tts.mlx.command')
+  if (mlxCommand.length === 0) throw new Error('dsh-talk: config.tts.mlx.command must not be empty')
+  const mlxScript = nullableNonEmptyStringOf(tts.mlx?.script, 'tts.mlx.script')
+  const mlxModel = stringOf(tts.mlx?.model, DEFAULT_MLX_MODEL, 'tts.mlx.model')
+  if (mlxModel.length === 0) throw new Error('dsh-talk: config.tts.mlx.model must not be empty')
+  const mlxVoice = stringOf(tts.mlx?.voice, DEFAULT_MLX_VOICE, 'tts.mlx.voice')
+  if (mlxVoice.trim().length === 0) throw new Error('dsh-talk: config.tts.mlx.voice must not be empty')
+  const mlxLanguage = stringOf(tts.mlx?.language, DEFAULT_MLX_LANGUAGE, 'tts.mlx.language')
+  if (mlxLanguage.trim().length === 0) throw new Error('dsh-talk: config.tts.mlx.language must not be empty')
+  const mlxChunkChars = numberOf(tts.mlx?.chunkChars, DEFAULT_MLX_CHUNK_CHARS, MIN_MLX_CHUNK_CHARS, MAX_MLX_CHUNK_CHARS, 'tts.mlx.chunkChars')
+  const mlxPlayer = stringOf(tts.mlx?.player, DEFAULT_MLX_PLAYER, 'tts.mlx.player')
+  if (mlxPlayer.length === 0) throw new Error('dsh-talk: config.tts.mlx.player must not be empty')
   const ttsExportEnabled = booleanOf(tts.export?.enabled, true, 'tts.export.enabled')
   const ttsExportDir = resolveExportDir(tts.export?.dir)
   const ttsExportMaxFiles = numberOf(
@@ -673,6 +754,13 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
     macosCommand,
     macosVoice,
     macosRate,
+    mlxCommand,
+    mlxScript,
+    mlxModel,
+    mlxVoice,
+    mlxLanguage,
+    mlxChunkChars,
+    mlxPlayer,
     piperCommand,
     piperModelPath,
     ttsExportEnabled,

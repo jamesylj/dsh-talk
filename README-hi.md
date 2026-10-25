@@ -184,7 +184,14 @@ Error: dsh-talk: speak text must not be empty
 | `stt.silenceFinaliseMs` | `4000` | इतनी मिलीसेकंड तक आवाज़ न आने पर लगातार Web Speech रोकें (500..15000) |
 | `stt.funasr.url` | *(कोई नहीं)* | FunASR इन्फ़रेंस एंडपॉइंट; `funasr` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
 | `stt.whisper.modelPath` | *(कोई नहीं)* | whisper.cpp मॉडल; `whisper` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`; auto पहले piper, फिर edge-tts, फिर ब्राउज़र वॉइस; `macos` सिस्टम वॉइस उपयोग करता है (केवल macOS) |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`; auto पहले piper, फिर edge-tts, फिर ब्राउज़र वॉइस; `macos` सिस्टम वॉइस उपयोग करता है (केवल macOS); `mlx` Apple Silicon पर क्वांटाइज़्ड Qwen3-TTS स्थानीय रूप से चलाता है |
+| `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | MLX TTS venv का Python इंटरप्रेटर (Apple Silicon स्थानीय अनुमान) |
+| `tts.mlx.script` | *(bundled)* | Worker स्क्रिप्ट; खाली = bundled `worker/mlx_tts.py` |
+| `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | क्वांटाइज़्ड Qwen3-TTS मॉडल निर्देशिका या HF repo id |
+| `tts.mlx.voice` | `Vivian` | Qwen3-TTS CustomVoice वॉइस |
+| `tts.mlx.language` | `Chinese` | मॉडल को दिया गया भाषा तर्क |
+| `tts.mlx.chunkChars` | `100` | वाक्य खंड आकार (20..500); छोटा = पहला ऑडियो जल्दी |
+| `tts.mlx.player` | `/usr/bin/afplay` | सिस्टम प्लेयर जो अगला खंड बनते समय वर्तमान खंड बजाता है |
 | `tts.rate` | `0` | edge-tts/piper के लिए गति ऑफ़सेट प्रतिशत में (-50..50); macOS `say` की गति भी इसी से स्केल होती है |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` निष्पादन (स्थानीय और ऑफ़लाइन; `macos` इंजन केवल macOS पर) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | इंस्टॉल वॉइस का नाम ठीक वैसा जैसा `say -v '?'` सूचीबद्ध करता है; अज्ञात नाम अस्वीकार होता है, चुपचाप डिफ़ॉल्ट वॉइस उपयोग नहीं होती |

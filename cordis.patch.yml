@@ -51,10 +51,11 @@
             language: ''
         # Text-to-speech.
         tts:
-          # auto | browser | edge-tts | macos | piper — auto prefers piper
+          # auto | browser | edge-tts | macos | mlx | piper — auto prefers piper
           # (configured model), then edge-tts, then the browser voice. `macos`
           # uses the system voice through /usr/bin/say (local, offline,
-          # macOS hosts only).
+          # macOS hosts only); `mlx` runs a quantized Qwen3-TTS model locally on
+          # Apple Silicon and streams chunk-by-chunk through the system player.
           engine: auto
           # Voice name override; unset = engine default.
           voice: ''
@@ -88,6 +89,24 @@
             voice: "Eddy (中文（中国大陆）)"
             # Baseline words per minute; `rate` above scales it as a percent.
             rate: 175
+          mlx:
+            # Local MLX inference engine (Apple Silicon). Requires a Python
+            # venv with mlx-audio plus a quantized Qwen3-TTS model directory.
+            # Defaults when empty: ~/.dsh-talk/mlx-tts-venv/bin/python and
+            # ~/.dsh-talk/models/qwen3-tts-0.6b-4bit.
+            command: ''
+            # Worker script; empty = the bundled worker/mlx_tts.py.
+            script: ''
+            # Model directory or HF repo id (4-bit MLX build recommended).
+            model: ''
+            # Qwen3-TTS CustomVoice speaker.
+            voice: Vivian
+            # Language argument (`Chinese`, `English`, ...).
+            language: Chinese
+            # Sentence chunk size: smaller = faster first audio, more calls.
+            chunkChars: 100
+            # System player used to play each chunk while synthesizing.
+            player: /usr/bin/afplay
           # Exported audio files: every locally synthesized utterance is also
           # written to a file whose absolute path the speak tool returns as
           # audioPath (hand it to another tool's file argument). The browser

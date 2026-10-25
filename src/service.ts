@@ -24,6 +24,7 @@ import { resolveConfig } from './config.ts'
 import type { AudioExportState, ExportOutcome, LocalTtsEngine } from './audio-export.ts'
 import { BROWSER_EXPORT_NOTE, exportSynthesizedAudio } from './audio-export.ts'
 import { EngineFailure, synthesize, transcribeFunasr, transcribeWhisper } from './engine.ts'
+import { synthesizeMlx } from './mlx.ts'
 import { sanitizeText } from './sanitize.ts'
 import {
   appendSettingsFragment,
@@ -234,7 +235,7 @@ export class TalkService extends TypertRemoteService {
       }
     }
 
-    const localEngine = engine // edge-tts | macos | piper
+    const localEngine = engine // edge-tts | macos | mlx | piper
     const controller = new AbortController()
     this.activeSyntheses.set(utteranceId, controller)
     const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal])
@@ -244,6 +245,17 @@ export class TalkService extends TypertRemoteService {
       // synchronously, which is not an EngineFailure; classify it here as the
       // interruption it is (for every local engine).
       if (signal.aborted) throw new EngineFailure('speech was interrupted before synthesis', true)
+      if (localEngine === 'mlx') {
+        // MLX renders in a worker that plays each chunk through the system
+        // player as it is synthesized, so the full WAV is only available when
+        // the worker exits; the outcome still carries the file for audioPath.
+        const result = await synthesizeMlx(this.resolved, spoken, signal, options.voice)
+        this.cacheUtterance(utteranceId, result.mime, result.data, spoken, 'mlx')
+        const exported = await this.exportAudio(utteranceId, 'mlx', result.data)
+        const durationSec = result.audioSec > 0 ? result.audioSec : Math.max(0, (Date.now() - startedAt) / 1000)
+        this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, { engine: 'mlx' }, spoken, result.data.byteLength, options.reason))
+        return { spoken: true, engine: 'mlx', audioBytes: result.data.byteLength, durationSec, utteranceId, ...exported }
+      }
       const result = await synthesize(this.ctx.subprocess, this.resolved, localEngine, spoken, signal, options.voice)
       const durationSec = Math.max(0, (Date.now() - startedAt) / 1000)
       this.cacheUtterance(utteranceId, result.mime, result.data, spoken, localEngine)

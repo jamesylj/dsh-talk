@@ -111,7 +111,7 @@ describe('speak tool three interfaces', () => {
         type: 'object',
         properties: {
           text: { type: 'string' },
-          engine: { type: 'string', enum: ['auto', 'browser', 'edge-tts', 'macos', 'piper'] },
+          engine: { type: 'string', enum: ['auto', 'browser', 'edge-tts', 'macos', 'mlx', 'piper'] },
         },
       })
       expect(schema!.parameters.required).toContain('text')

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.35] - 2026-10-25
+
+### Added
+
+- **New `mlx` local inference engine (Qwen3-TTS, Apple Silicon).** The bundled `worker/mlx_tts.py` loads a quantized Qwen3-TTS CustomVoice model (4-bit by default, `Vivian` speaker, 24 kHz), splits the text on sentence boundaries, synthesizes and plays each chunk through the system player as soon as it exists (`--chunk-chars`, default 100), and writes the concatenated WAV for the usual cache/export/`audioPath` pipeline. First audio arrives after the one-time model load plus the first chunk (~2 s on an M2 Pro), independent of the total text length; a long reply is no longer truncated. New config: `tts.mlx.command` (default `~/.dsh-talk/mlx-tts-venv/bin/python`), `tts.mlx.script` (bundled worker when unset), `tts.mlx.model` (default `~/.dsh-talk/models/qwen3-tts-0.6b-4bit`), `tts.mlx.voice` (default `Vivian`), `tts.mlx.language` (default `Chinese`), `tts.mlx.chunkChars` (default 100, 20..500) and `tts.mlx.player` (default `/usr/bin/afplay`). The host plays this engine's audio while synthesizing, so the client records `host-played` and never fetches the WAV twice.
+
 ## [0.3.34] - 2026-10-25
 
 ### Fixed

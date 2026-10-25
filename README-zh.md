@@ -192,7 +192,14 @@ Error: dsh-talk: speak text must not be empty
 | `stt.silenceFinaliseMs` | `4000` | 连续 Web Speech 在没有语音活动达到此毫秒数后停止（500..15000） |
 | `stt.funasr.url` | *(无)* | FunASR 推理端点；引擎为 `funasr` 时必填；空值视为未配置 |
 | `stt.whisper.modelPath` | *(无)* | whisper.cpp 模型；引擎为 `whisper` 时必填；空值视为未配置 |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`；auto 优先 piper，其次 edge-tts，最后浏览器语音；`macos` 使用系统语音（仅 macOS） |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`；auto 优先 piper，其次 edge-tts，最后浏览器语音；`macos` 使用系统语音（仅 macOS）；`mlx` 在 Apple Silicon 上本地运行量化 Qwen3-TTS |
+| `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | MLX TTS venv 的 Python 解释器（Apple Silicon 本地推理） |
+| `tts.mlx.script` | *(内置)* | Worker 脚本；留空 = 内置 `worker/mlx_tts.py` |
+| `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | 量化 Qwen3-TTS 模型目录或 HF repo id |
+| `tts.mlx.voice` | `Vivian` | Qwen3-TTS CustomVoice 说话人 |
+| `tts.mlx.language` | `Chinese` | 传给模型的语言参数 |
+| `tts.mlx.chunkChars` | `100` | 分句长度（20..500）；越小首音越快、调用次数越多 |
+| `tts.mlx.player` | `/usr/bin/afplay` | 逐块播放的系统播放器（合成下一块时继续播当前块） |
 | `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50）；同时按百分比缩放 macOS `say` 的语速 |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` 可执行文件（本地离线；`macos` 引擎仅 macOS 可用） |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | 已安装语音名，须与 `say -v '?'` 列出的完全一致；未知名称会被拒绝，而不是静默改用系统默认语音 |

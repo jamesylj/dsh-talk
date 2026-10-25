@@ -193,7 +193,14 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). `cord
 | `stt.silenceFinaliseMs` | `4000` | Stop continuous Web Speech recognition after this many milliseconds without speech (500..15000) |
 | `stt.funasr.url` | *(none)* | FunASR inference endpoint; required when the engine is `funasr`; an empty value counts as not configured |
 | `stt.whisper.modelPath` | *(none)* | whisper.cpp model; required when the engine is `whisper`; an empty value counts as not configured |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`; auto prefers piper, then edge-tts, then the browser voice; `macos` uses the system voice (macOS hosts only) |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`; auto prefers piper, then edge-tts, then the browser voice; `macos` uses the system voice (macOS hosts only); `mlx` runs a quantized Qwen3-TTS model locally on Apple Silicon |
+| `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | Python interpreter of the MLX TTS venv (Apple Silicon local inference) |
+| `tts.mlx.script` | *(bundled)* | Worker script; unset = the bundled `worker/mlx_tts.py` |
+| `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | Quantized Qwen3-TTS model directory or HF repo id |
+| `tts.mlx.voice` | `Vivian` | Qwen3-TTS CustomVoice speaker |
+| `tts.mlx.language` | `Chinese` | Language argument passed to the model |
+| `tts.mlx.chunkChars` | `100` | Sentence chunk size (20..500); smaller = faster first audio, more calls |
+| `tts.mlx.player` | `/usr/bin/afplay` | System player that plays each chunk while the next one synthesizes |
 | `tts.rate` | `0` | Rate offset in percent (-50..50) for edge-tts/piper; also scales the macOS `say` rate |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` executable (local and offline; the `macos` engine only exists on macOS) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Installed voice name exactly as `say -v '?'` lists it; an unknown name is rejected instead of silently using the system default |

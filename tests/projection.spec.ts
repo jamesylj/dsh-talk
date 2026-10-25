@@ -115,6 +115,24 @@ describe('talk:speech projection', () => {
     expect(talkSpeechProjectionSchema.safeParse({ ...value, pitch: 2.5 }).success).toBe(false)
   })
 
+  it('folds an mlx-engine (host-played) utterance through the projection', () => {
+    const mlxEvent = {
+      seq: 13,
+      type: 'dsh-talk/speech',
+      data: {
+        kind: 'tts',
+        utteranceId: 'u-mlx',
+        engine: 'mlx',
+        text: '长文本测试。',
+        audioBytes: 8192,
+        reason: 'auto-reply',
+      },
+    } as unknown as SessionEvent
+    const state = applyTalkSpeechProjection(initTalkSpeechProjection(), mlxEvent)
+    expect(state?.engine).toBe('mlx')
+    expect(talkSpeechProjectionSchema.safeParse(state).success).toBe(true)
+  })
+
   it('folds a macOS-engine utterance through the projection', () => {
     const macosEvent = {
       seq: 12,

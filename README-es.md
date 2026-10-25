@@ -184,7 +184,14 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 | `stt.silenceFinaliseMs` | `4000` | Detener Web Speech continuo tras estos milisegundos sin voz (500..15000) |
 | `stt.funasr.url` | *(ninguna)* | Endpoint de inferencia FunASR; obligatorio con el motor `funasr`; un valor vacío cuenta como no configurado |
 | `stt.whisper.modelPath` | *(ninguna)* | Modelo whisper.cpp; obligatorio con el motor `whisper`; un valor vacío cuenta como no configurado |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `piper`; auto prefiere piper, luego edge-tts, luego la voz del navegador; `macos` usa la voz del sistema (solo macOS) |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`; auto prefiere piper, luego edge-tts, luego la voz del navegador; `macos` usa la voz del sistema (solo macOS); `mlx` ejecuta localmente un Qwen3-TTS cuantizado en Apple Silicon |
+| `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | Intérprete Python del venv de MLX (inferencia local en Apple Silicon) |
+| `tts.mlx.script` | *(incluido)* | Script worker; sin valor = el `worker/mlx_tts.py` incluido |
+| `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | Directorio del modelo Qwen3-TTS cuantizado o repo id de HF |
+| `tts.mlx.voice` | `Vivian` | Voz CustomVoice de Qwen3-TTS |
+| `tts.mlx.language` | `Chinese` | Idioma pasado al modelo |
+| `tts.mlx.chunkChars` | `100` | Tamaño de fragmento (20..500); menor = primer audio más rápido |
+| `tts.mlx.player` | `/usr/bin/afplay` | Reproductor del sistema que suena cada fragmento mientras se sintetiza el siguiente |
 | `tts.rate` | `0` | Desplazamiento de velocidad en porcentaje (-50..50) para edge-tts/piper; también escala la velocidad de `say` en macOS |
 | `tts.macos.command` | `/usr/bin/say` | Ejecutable `say` de macOS (local y sin conexión; el motor `macos` solo existe en macOS) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Nombre de voz instalada exactamente como lo lista `say -v '?'`; un nombre desconocido se rechaza en vez de usar en silencio la voz por defecto |

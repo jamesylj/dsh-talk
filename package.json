@@ -1,6 +1,6 @@
 {
   "name": "dsh-talk",
-  "version": "0.3.34",
+  "version": "0.3.35",
   "description": "Voice-first session loop for DeepSeek Harness: a composer microphone button with browser/local speech-to-text (Web Speech, FunASR, whisper.cpp), a speak tool for text-to-speech replies (browser, edge-tts, piper), event announcements with mute, and speak-to-interrupt.",
   "repository": {
     "type": "git",
@@ -32,6 +32,7 @@
   },
   "files": [
     "lib",
+    "worker",
     "cordis.patch.yml",
     "CHANGELOG.md",
     "SECURITY.md",

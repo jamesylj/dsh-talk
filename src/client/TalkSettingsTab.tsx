@@ -91,6 +91,7 @@ export function TalkSettingsTab(props: TalkSettingsTabProps): ReactNode {
           <option value="browser">browser</option>
           <option value="edge-tts">edge-tts</option>
           <option value="macos">macos</option>
+          <option value="mlx">mlx</option>
           <option value="piper">piper</option>
         </select>
       </label>

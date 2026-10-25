@@ -165,5 +165,21 @@ describe('resolveConfig', () => {
     expect(overridden.macosVoice).toBe('Tingting')
     expect(overridden.macosRate).toBe(200)
   })
+
+  it('resolves the mlx engine defaults and bounds', () => {
+    const resolved = resolveConfig({ tts: { engine: 'mlx' } })
+    expect(resolved.mlxCommand).toContain('.dsh-talk/mlx-tts-venv/bin/python')
+    expect(resolved.mlxModel).toContain('qwen3-tts-0.6b-4bit')
+    expect(resolved.mlxVoice).toBe('Vivian')
+    expect(resolved.mlxLanguage).toBe('Chinese')
+    expect(resolved.mlxChunkChars).toBe(100)
+    expect(resolved.mlxPlayer).toBe('/usr/bin/afplay')
+    expect(resolved.mlxScript).toBeNull()
+    expect(resolveTtsEngine('mlx', resolved)).toBe('mlx')
+    expect(() => resolveConfig({ tts: { mlx: { chunkChars: 10 } } })).toThrow(/mlx\.chunkChars/u)
+    expect(() => resolveConfig({ tts: { mlx: { chunkChars: 600 } } })).toThrow(/mlx\.chunkChars/u)
+    expect(() => resolveConfig({ tts: { mlx: { voice: '  ' } } })).toThrow(/mlx\.voice/u)
+    expect(() => resolveConfig({ tts: { mlx: { model: '' } } })).toThrow(/mlx\.model/u)
+  })
 })
 
