@@ -77,6 +77,7 @@ export function applyTalkSpeechProjection(state: TalkSpeechProjectionState, even
     text: next.text,
     audioBytes: next.audioBytes,
     reason: next.reason,
+    ...(typeof event.time === 'number' ? { at: event.time } : {}),
     ...(next.error !== undefined ? { error: next.error } : {}),
     ...(next.interrupted === true ? { interrupted: true } : {}),
     ...(next.voice !== undefined ? { voice: next.voice } : {}),
@@ -91,7 +92,7 @@ export function viewTalkSpeechProjection(state: TalkSpeechProjectionState): Talk
 }
 
 /** Cache-invalidation version for the persisted projection cache. */
-export const TALK_SPEECH_PROJECTION_STATE_VERSION = 2
+export const TALK_SPEECH_PROJECTION_STATE_VERSION = 3
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {

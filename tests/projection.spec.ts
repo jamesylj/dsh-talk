@@ -128,6 +128,14 @@ describe('talk:speech projection', () => {
     expect(after).toBe(state)
   })
 
+  it('carries the log event timestamp so the client can drop stale frames', () => {
+    const fresh = speechEvent(11, 'u-timed') as unknown as { time?: number }
+    fresh.time = 1_760_000_000_000
+    const state = applyTalkSpeechProjection(initTalkSpeechProjection(), fresh as never)
+    expect(state?.at).toBe(1_760_000_000_000)
+    expect(talkSpeechProjectionSchema.safeParse(state).success).toBe(true)
+  })
+
   it('keeps the pre-existing plugin record when a plain event follows it', () => {
     let state = applyTalkSpeechProjection(initTalkSpeechProjection(), pluginRecordEvent(9, 'u-record'))
     state = applyTalkSpeechProjection(state, speechEvent(10, 'u-plain'))

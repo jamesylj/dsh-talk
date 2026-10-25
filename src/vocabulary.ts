@@ -69,6 +69,8 @@ export interface TalkSpeechProjection {
   audioBytes: number
   /** What triggered the utterance. */
   reason: SpeechReason
+  /** Session-log timestamp (epoch ms) of the event behind this frame; absent in pre-0.3.31 cached values. */
+  at?: number | undefined
   /** Sanitized failure note; absent on success. */
   error?: string | undefined
   /** True when the utterance was interrupted. */
@@ -95,6 +97,7 @@ export const talkSpeechEventPayloadSchema = z.object({
   text: z.string(),
   audioBytes: z.number().int(),
   reason: SPEECH_REASON_SCHEMA,
+  at: z.number().int().optional(),
   error: z.string().optional(),
   interrupted: z.boolean().optional(),
   voice: z.string().optional(),
@@ -110,6 +113,7 @@ export const talkSpeechProjectionSchema = z.object({
   text: z.string(),
   audioBytes: z.number().int(),
   reason: SPEECH_REASON_SCHEMA,
+  at: z.number().int().optional(),
   error: z.string().optional(),
   interrupted: z.boolean().optional(),
   voice: z.string().optional(),

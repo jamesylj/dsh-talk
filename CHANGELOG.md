@@ -14,6 +14,12 @@
 
 - **edge-tts 403 troubleshooting.** Older edge-tts builds are rejected by the service (`WSServerHandshakeError: 403 Invalid response status`, stale `Sec-MS-GEC`); the READMEs now say to upgrade to edge-tts ≥ 7.3.1 and point `tts.edgeTts.command` at it (a dedicated venv is enough), which restores local synthesis and file export.
 
+## [Unreleased]
+
+### Fixed
+
+- **Only live speech frames play; history no longer interrupts it.** Session switches and component remounts re-deliver each conversation's last `talk:speech` frame, so the client re-read old replies and released the `<audio>` element that was currently speaking — audible as a reply cut off after a few words. The projection now carries the log event time (`at`, stateVersion 3), the client drops frames older than 20 s (claimed, never replayed), and audio lifecycle breadcrumbs (`stop-previous`, `media-pause`, `media-ended`, `speech-end`, `skip-stale`) make any remaining truncation diagnosable.
+
 ## [0.3.27] - 2026-10-25
 
 ### Added

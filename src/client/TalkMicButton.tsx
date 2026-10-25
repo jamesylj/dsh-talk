@@ -98,6 +98,8 @@ function supportedMime(): string | undefined {
 interface ActivePlayer {
   readonly player: HTMLAudioElement
   readonly url: string
+  /** Utterance this element plays (breadcrumbs only). */
+  readonly utteranceId: string
 }
 
 /**
@@ -139,6 +141,13 @@ let playbackEpoch = 0
 
 /** Local Storage key for the bounded playback breadcrumbs (diagnostics only). */
 const PLAYBACK_DEBUG_KEY = 'dsh-talk:playback-debug'
+
+/**
+ * A projection frame older than this is history, not a live utterance. Session
+ * switches and remounts re-deliver the last frame of every conversation; playing
+ * those re-reads old replies and interrupts whatever is currently speaking.
+ */
+const MAX_FRAME_AGE_MS = 20_000
 
 /**
  * Append one breadcrumb to a bounded Local Storage ring. This is the client
@@ -501,6 +510,7 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
       voice?: string
       rate?: number
       pitch?: number
+      at?: number
     } | null | undefined
     : undefined
   const speech = readProjection === undefined ? undefined : readProjection('talk:speech')
@@ -516,8 +526,23 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
       recordPlaybackBreadcrumb({ kind: 'skip-duplicate', id: speech.utteranceId })
       return
     }
+    // Claim first (so this frame can never replay), then drop history: a
+    // session switch or remount re-delivers the previous conversation's last
+    // frame, and speaking it would cut the live reply short.
+    if (typeof speech.at === 'number' && Date.now() - speech.at > MAX_FRAME_AGE_MS) {
+      recordPlaybackBreadcrumb({ kind: 'skip-stale', id: speech.utteranceId, ageMs: Date.now() - speech.at })
+      return
+    }
     recordPlaybackBreadcrumb({ kind: 'play', id: speech.utteranceId, engine: speech.engine ?? 'unknown' })
     const epoch = (playbackEpoch += 1)
+    if (activePlayer !== null) {
+      recordPlaybackBreadcrumb({
+        kind: 'stop-previous',
+        id: activePlayer.utteranceId,
+        currentTime: Number(activePlayer.player.currentTime.toFixed(2)),
+        duration: Number.isFinite(activePlayer.player.duration) ? Number(activePlayer.player.duration.toFixed(2)) : null,
+      })
+    }
     releasePlayer(activePlayer)
     activePlayer = null
     // A queued/previous SpeechSynthesis utterance must not overlap this one,
@@ -544,6 +569,9 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
       utterance.addEventListener('error', event => {
         recordPlaybackBreadcrumb({ kind: 'speech-error', id: speech.utteranceId, error: String((event as { error?: unknown }).error ?? 'unknown') })
       })
+      utterance.addEventListener('end', () => {
+        recordPlaybackBreadcrumb({ kind: 'speech-end', id: speech.utteranceId })
+      })
       speechSynthesis.speak(utterance)
     }
     if (speech.engine === 'browser') {
@@ -568,7 +596,7 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
         for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
         url = URL.createObjectURL(new Blob([bytes], { type: entry.mime }))
         const player = new Audio(url)
-        const active: ActivePlayer = { player, url }
+        const active: ActivePlayer = { player, url, utteranceId: speech.utteranceId }
         const releaseActive = (): void => {
           if (activePlayer === active) activePlayer = null
           releasePlayer(active)
@@ -591,7 +619,22 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
         }, 2500)
         player.addEventListener('ended', () => {
           clearTimeout(watchdog)
+          recordPlaybackBreadcrumb({
+            kind: 'media-ended',
+            id: speech.utteranceId,
+            currentTime: Number(player.currentTime.toFixed(2)),
+            duration: Number.isFinite(player.duration) ? Number(player.duration.toFixed(2)) : null,
+          })
           releaseActive()
+        })
+        player.addEventListener('pause', () => {
+          recordPlaybackBreadcrumb({
+            kind: 'media-pause',
+            id: speech.utteranceId,
+            currentTime: Number(player.currentTime.toFixed(2)),
+            ended: player.ended,
+            duration: Number.isFinite(player.duration) ? Number(player.duration.toFixed(2)) : null,
+          })
         })
         player.addEventListener('error', () => {
           clearTimeout(watchdog)
