@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '../projection.ts'
-import { claimUtteranceStart, foldMic, initMic, type MicViewModel } from './present.ts'
+import { claimUtteranceStart, foldMic, initMic, playbackStalled, type MicViewModel } from './present.ts'
 import { advanceSilence, isSpeechFrame, rmsOf, silenceTrips } from './vad.ts'
 import { selectBrowserVoice } from './browserVoice.ts'
 import type { TalkAudio, TalkInterruptResult, TalkStatus, TalkTranscript } from '../wire.ts'
@@ -175,6 +175,31 @@ function recordPlaybackBreadcrumb(entry: Record<string, unknown>): void {
 }
 
 /**
+ * Stop whatever this client runtime is playing right now (speak-to-interrupt).
+ * The host `interrupt` only aborts synthesis, so the local `<audio>` element
+ * must be released here too: without it a player could keep "playing" silently
+ * (Bluetooth route switch) or speak over the recording. The epoch bump drops a
+ * late `talk/audio` response that belongs to the interrupted utterance.
+ *
+ * @param reason - diagnostics-only breadcrumb reason.
+ */
+function stopActivePlayback(reason: string): void {
+  playbackEpoch += 1
+  if (activePlayer !== null) {
+    const active = activePlayer
+    activePlayer = null
+    recordPlaybackBreadcrumb({
+      kind: 'stop-playback',
+      reason,
+      id: active.utteranceId,
+      currentTime: Number(active.player.currentTime.toFixed(2)),
+    })
+    releasePlayer(active)
+  }
+  if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+}
+
+/**
  * The record button itself. All browser capability reads are feature-detected
  * and degrade to a disabled button with no throw.
  *
@@ -318,8 +343,13 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
   const start = async (): Promise<void> => {
     const snapshot = settingsRef.current
     if (snapshot === undefined || snapshot.record.enabled !== true) return
-    // Speak-to-interrupt: starting to talk stops host playback.
-    if (snapshot.interrupt) void interrupt()
+    // Speak-to-interrupt: starting to talk stops host synthesis AND the local
+    // player. The host interrupt only aborts synthesis; without the client-side
+    // release the <audio> element keeps its state (and can stall silently).
+    if (snapshot.interrupt) {
+      stopActivePlayback('record')
+      void interrupt()
+    }
     // The host resolves `auto` to the configured engine. Only the `web`
     // resolution may use Web Speech; funasr/whisper must go through
     // MediaRecorder -> talk/transcribe, otherwise the local-engine promise is
@@ -597,7 +627,21 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
         url = URL.createObjectURL(new Blob([bytes], { type: entry.mime }))
         const player = new Audio(url)
         const active: ActivePlayer = { player, url, utteranceId: speech.utteranceId }
+        let watchdog: ReturnType<typeof setTimeout> | null = null
+        let stallTimer: ReturnType<typeof setInterval> | null = null
+        let lastProgressAt = Date.now()
+        const clearStartWatchdog = (): void => {
+          if (watchdog !== null) {
+            clearTimeout(watchdog)
+            watchdog = null
+          }
+        }
         const releaseActive = (): void => {
+          clearStartWatchdog()
+          if (stallTimer !== null) {
+            clearInterval(stallTimer)
+            stallTimer = null
+          }
           if (activePlayer === active) activePlayer = null
           releasePlayer(active)
         }
@@ -612,13 +656,13 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
           releaseActive()
           speakWithBrowser()
         }
-        const watchdog = setTimeout(() => {
+        watchdog = setTimeout(() => {
           if (started) return
           recordPlaybackBreadcrumb({ kind: 'play-timeout', id: speech.utteranceId })
           fallbackOnce()
         }, 2500)
         player.addEventListener('ended', () => {
-          clearTimeout(watchdog)
+          clearStartWatchdog()
           recordPlaybackBreadcrumb({
             kind: 'media-ended',
             id: speech.utteranceId,
@@ -637,21 +681,35 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
           })
         })
         player.addEventListener('error', () => {
-          clearTimeout(watchdog)
+          clearStartWatchdog()
           recordPlaybackBreadcrumb({ kind: 'media-error', id: speech.utteranceId, code: player.error?.code ?? null })
           releaseActive()
           fallbackOnce()
         })
         player.addEventListener('playing', () => {
           started = true
-          clearTimeout(watchdog)
+          lastProgressAt = Date.now()
+          clearStartWatchdog()
           recordPlaybackBreadcrumb({ kind: 'media-playing', id: speech.utteranceId, bytes: entry.data.length })
         })
+        player.addEventListener('timeupdate', () => {
+          lastProgressAt = Date.now()
+        })
+        stallTimer = setInterval(() => {
+          if (!playbackStalled(Date.now(), lastProgressAt, player.ended)) return
+          recordPlaybackBreadcrumb({
+            kind: 'media-stalled',
+            id: speech.utteranceId,
+            currentTime: Number(player.currentTime.toFixed(2)),
+            duration: Number.isFinite(player.duration) ? Number(player.duration.toFixed(2)) : null,
+          })
+          releaseActive()
+        }, 1_000)
         if (epoch === playbackEpoch) activePlayer = active
         void player.play().then(() => {
           recordPlaybackBreadcrumb({ kind: 'play-resolved', id: speech.utteranceId })
         }).catch(error => {
-          clearTimeout(watchdog)
+          clearStartWatchdog()
           recordPlaybackBreadcrumb({ kind: 'play-rejected', id: speech.utteranceId, message: briefError(error) })
           fallbackOnce()
         })

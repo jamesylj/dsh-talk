@@ -12,6 +12,8 @@ import {
   foldMic,
   initMic,
   MAX_TRACKED_UTTERANCES,
+  playbackStalled,
+  PLAYBACK_STALL_MS,
   resetUtteranceStarts,
 } from '../src/client/present.ts'
 
@@ -81,5 +83,17 @@ describe('claimUtteranceStart', () => {
     expect(claimUtteranceStart('u-0')).toBe(true)
     expect(claimUtteranceStart(`u-${String(MAX_TRACKED_UTTERANCES)}`)).toBe(false)
     resetUtteranceStarts()
+  })
+})
+
+describe('playbackStalled', () => {
+  it('does not flag progress inside the window or an ended element', () => {
+    expect(playbackStalled(1_000, 0, false)).toBe(false)
+    expect(playbackStalled(PLAYBACK_STALL_MS + 1, 0, true)).toBe(false)
+  })
+
+  it('flags an element that stopped advancing without ending', () => {
+    expect(playbackStalled(PLAYBACK_STALL_MS + 1, 0, false)).toBe(true)
+    expect(playbackStalled(PLAYBACK_STALL_MS * 2, 0, false)).toBe(true)
   })
 })

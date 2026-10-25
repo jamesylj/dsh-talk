@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.34] - 2026-10-25
+
+### Fixed
+
+- **Speak-to-interrupt now stops the local player too.** Starting a recording only aborted host synthesis; the client's `<audio>` element kept its playback state (and could stay "playing" silently when the output route vanished), so talking while a reply played left a ghost player behind. The mic start now bumps the playback epoch, records `stop-playback`, revokes the active player and cancels browser speech before capture begins (still gated by the `interrupt` config).
+- **Stalled-playback watchdog.** A player that stops advancing for 10 s without firing `ended` (Bluetooth profile switch, vanished output device) is released and recorded as `media-stalled`, instead of lingering and interfering with the next utterance.
+
 ## [0.3.33] - 2026-10-25
 
 ### Fixed

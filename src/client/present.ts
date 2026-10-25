@@ -71,6 +71,25 @@ export function clampRecordSeconds(value: number, fallback: number): number {
   return Math.min(Math.floor(value), 600)
 }
 
+/** Milliseconds without media progress after which a playing element counts as stalled. */
+export const PLAYBACK_STALL_MS = 10_000
+
+/**
+ * Decide whether a local `<audio>` player has stalled: it has not ended, yet
+ * its playback position stopped advancing for the threshold. A Bluetooth
+ * profile switch or a vanished output route can leave the element "playing"
+ * forever with no `error` and no `ended`; the caller releases it so the next
+ * utterance is never blocked by a ghost player.
+ *
+ * @param now - current epoch milliseconds.
+ * @param lastProgressAt - last `timeupdate`/`playing` timestamp.
+ * @param ended - the element's `ended` flag.
+ * @returns true when the player should be treated as stalled.
+ */
+export function playbackStalled(now: number, lastProgressAt: number, ended: boolean): boolean {
+  return !ended && now - lastProgressAt > PLAYBACK_STALL_MS
+}
+
 /** How many started utterance ids the client remembers (bounded; oldest evicted). */
 export const MAX_TRACKED_UTTERANCES = 256
 
