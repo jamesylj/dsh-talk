@@ -22,7 +22,7 @@ dsh plugin --profile <name> add dsh-talk
 
 ```sh
 # git channel (latest main)
-dsh plugin --profile web add github:PerryLink/dsh-talk
+dsh plugin --profile web add github:jamesylj/dsh-talk
 
 # npm channel (published releases)
 dsh plugin --profile web add dsh-talk

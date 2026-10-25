@@ -19,7 +19,7 @@ dsh plugin --profile <name> add dsh-talk
 ## इंस्टॉल
 
 ```sh
-dsh plugin --profile web add github:PerryLink/dsh-talk
+dsh plugin --profile web add github:jamesylj/dsh-talk
 dsh plugin --profile web add dsh-talk
 pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz
 ```

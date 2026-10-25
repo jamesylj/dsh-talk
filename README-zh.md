@@ -18,7 +18,7 @@ dsh plugin --profile <name> add dsh-talk
 ## 安装
 
 ```sh
-dsh plugin --profile web add github:PerryLink/dsh-talk   # git 渠道
+dsh plugin --profile web add github:jamesylj/dsh-talk   # git 渠道
 dsh plugin --profile web add dsh-talk                      # npm 渠道
 pnpm pack && dsh plugin --profile web add ./dsh-talk-<version>.tgz  # tarball
 ```
