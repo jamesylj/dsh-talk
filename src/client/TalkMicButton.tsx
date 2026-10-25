@@ -147,6 +147,12 @@ const PLAYBACK_DEBUG_KEY = 'dsh-talk:playback-debug'
  *
  * @param entry - one play/skip/mount/unmount record.
  */
+/** Bounded diagnostic text for one thrown value (breadcrumbs only). */
+function briefError(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  return text.slice(0, 160)
+}
+
 function recordPlaybackBreadcrumb(entry: Record<string, unknown>): void {
   try {
     const storage = globalThis.localStorage
@@ -517,8 +523,13 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
     // A queued/previous SpeechSynthesis utterance must not overlap this one,
     // whichever engine produced it.
     if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
-    if (speech.engine === 'browser') {
+    // Shared browser-voice delivery: used directly for browser records and as
+    // the guaranteed fallback when the host audio bytes cannot be fetched or
+    // played (cache evicted, transport error, autoplay rejection). Silence is
+    // never the right degradation for an utterance that should be heard.
+    const speakWithBrowser = (): void => {
       if (typeof speechSynthesis === 'undefined') {
+        recordPlaybackBreadcrumb({ kind: 'speech-unavailable', id: speech.utteranceId })
         console.warn('[dsh-talk] speechSynthesis unavailable')
         return
       }
@@ -527,11 +538,29 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
       if (voice !== undefined) utterance.voice = voice
       if (speech.rate !== undefined) utterance.rate = speech.rate
       if (speech.pitch !== undefined) utterance.pitch = speech.pitch
+      utterance.addEventListener('start', () => {
+        recordPlaybackBreadcrumb({ kind: 'speech-start', id: speech.utteranceId })
+      })
+      utterance.addEventListener('error', event => {
+        recordPlaybackBreadcrumb({ kind: 'speech-error', id: speech.utteranceId, error: String((event as { error?: unknown }).error ?? 'unknown') })
+      })
       speechSynthesis.speak(utterance)
+    }
+    if (speech.engine === 'browser') {
+      speakWithBrowser()
       return
     }
+    recordPlaybackBreadcrumb({ kind: 'audio-start', id: speech.utteranceId })
     void audio(speech.utteranceId).then(entry => {
-      if (entry === null || epoch !== playbackEpoch) return
+      if (epoch !== playbackEpoch) {
+        recordPlaybackBreadcrumb({ kind: 'audio-stale', id: speech.utteranceId })
+        return
+      }
+      if (entry === null) {
+        recordPlaybackBreadcrumb({ kind: 'audio-null', id: speech.utteranceId })
+        speakWithBrowser()
+        return
+      }
       let url: string | null = null
       try {
         const binary = atob(entry.data)
@@ -544,12 +573,48 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
           if (activePlayer === active) activePlayer = null
           releasePlayer(active)
         }
-        player.addEventListener('ended', releaseActive)
-        player.addEventListener('error', releaseActive)
+        // A started flag + watchdog covers the third silent failure mode: the
+        // element neither plays nor rejects (autoplay pending). After 2.5 s of
+        // no `playing` event the browser voice takes over.
+        let started = false
+        let fellBack = false
+        const fallbackOnce = (): void => {
+          if (started || fellBack) return
+          fellBack = true
+          releaseActive()
+          speakWithBrowser()
+        }
+        const watchdog = setTimeout(() => {
+          if (started) return
+          recordPlaybackBreadcrumb({ kind: 'play-timeout', id: speech.utteranceId })
+          fallbackOnce()
+        }, 2500)
+        player.addEventListener('ended', () => {
+          clearTimeout(watchdog)
+          releaseActive()
+        })
+        player.addEventListener('error', () => {
+          clearTimeout(watchdog)
+          recordPlaybackBreadcrumb({ kind: 'media-error', id: speech.utteranceId, code: player.error?.code ?? null })
+          releaseActive()
+          fallbackOnce()
+        })
+        player.addEventListener('playing', () => {
+          started = true
+          clearTimeout(watchdog)
+          recordPlaybackBreadcrumb({ kind: 'media-playing', id: speech.utteranceId, bytes: entry.data.length })
+        })
         if (epoch === playbackEpoch) activePlayer = active
-        void player.play().catch(releaseActive)
-      } catch {
-        // A failed decode/play must not leak the URL we may have created.
+        void player.play().then(() => {
+          recordPlaybackBreadcrumb({ kind: 'play-resolved', id: speech.utteranceId })
+        }).catch(error => {
+          clearTimeout(watchdog)
+          recordPlaybackBreadcrumb({ kind: 'play-rejected', id: speech.utteranceId, message: briefError(error) })
+          fallbackOnce()
+        })
+      } catch (error) {
+        // A failed decode must not leak the URL we may have created.
+        recordPlaybackBreadcrumb({ kind: 'decode-error', id: speech.utteranceId, message: briefError(error) })
         if (url !== null) {
           try {
             URL.revokeObjectURL(url)
@@ -557,8 +622,12 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
             // The URL is already revoked.
           }
         }
+        speakWithBrowser()
       }
-    }).catch(() => {})
+    }).catch(error => {
+      recordPlaybackBreadcrumb({ kind: 'audio-error', id: speech.utteranceId, message: briefError(error) })
+      speakWithBrowser()
+    })
   }, [speech, audio])
 
   // Mount/unmount breadcrumbs only. Playback deliberately outlives the mount:
