@@ -2,7 +2,7 @@
  * The unified SpeechProvider seam (reserved for the P2 registry). Today STT
  * and TTS engines are resolved through `resolveSttEngine`/`resolveTtsEngine`
  * and implemented by the pure functions in `engine.ts` (Web Speech, FunASR,
- * whisper.cpp, browser/edge-tts/piper). A future release will let third-party
+ * whisper.cpp, browser/edge-tts/macos/piper). A future release will let third-party
  * providers register here instead of branching in the resolver; this interface
  * pins the shape providers will implement so consumers can plan against it
  * without waiting for the registry itself.

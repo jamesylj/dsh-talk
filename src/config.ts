@@ -166,9 +166,9 @@ export interface TtsMacosConfig {
 export interface TtsConfig {
   /** Engine selection: auto | browser | edge-tts | macos | piper (default auto). */
   engine?: TtsEngine
-  /** Voice name override for the resolved engine; unset = engine default. */
+  /** edge-tts voice override; unset = `tts.edgeTts.voice`. The macOS engine uses `tts.macos.voice`. */
   voice?: string
-  /** Rate offset in percent (-50..50) for edge-tts/piper (default 0). */
+  /** Rate offset in percent (-50..50) for edge-tts/piper/macos (default 0). */
   rate?: number
   /** Fall back to the browser voice when a local engine fails (default true). */
   fallbackToBrowser?: boolean
@@ -294,7 +294,7 @@ export interface ResolvedConfig {
   ttsEngine: TtsEngine
   /** Voice override, or null for the engine default. */
   ttsVoice: string | null
-  /** Rate offset in percent for edge-tts/piper. */
+  /** Rate offset in percent for edge-tts/piper/macos. */
   ttsRate: number
   /** Fall back to the browser voice on local-engine failure. */
   ttsFallbackToBrowser: boolean

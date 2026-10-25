@@ -58,7 +58,7 @@
           engine: auto
           # Voice name override; unset = engine default.
           voice: ''
-          # Rate offset in percent (-50..50) for edge-tts/piper.
+          # Rate offset in percent (-50..50) for edge-tts/piper/macos.
           rate: 0
           # Fall back to the browser voice when a local engine fails.
           fallbackToBrowser: true

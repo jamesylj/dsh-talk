@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.33] - 2026-10-25
+
+### Fixed
+
+- **macOS voice validation hardening.** The `say -v '?'` parser now accepts numeric region codes (`ar_001`), so every installed voice is recognised; a rejected voice re-lists once before failing (a voice installed after the host started is accepted without a restart); and an interruption during the voice listing is classified as `interrupted` instead of falling back to the browser voice and re-speaking the cancelled text. A speak signal that is already aborted is likewise classified as `interrupted` for every local engine, instead of surfacing as a spawn failure.
+
 ## [0.3.32] - 2026-10-25
 
 ### Added

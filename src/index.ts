@@ -61,7 +61,7 @@ export {
   type AutoReplyToolSpoke,
 } from './auto-reply.ts'
 export { sanitizeText, redactSecrets, displayPath } from './sanitize.ts'
-export { edgeTtsArgv, piperSpec, whisperArgv, runCommand, synthesize, transcribeWhisper, transcribeFunasr, EngineFailure } from './engine.ts'
+export { edgeTtsArgv, macosRateWpm, macosSaySpec, parseMacosVoiceList, piperSpec, whisperArgv, runCommand, synthesize, transcribeWhisper, transcribeFunasr, EngineFailure } from './engine.ts'
 export {
   BROWSER_EXPORT_NOTE,
   DEFAULT_EXPORT_DIRECTORY,

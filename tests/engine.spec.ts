@@ -99,6 +99,7 @@ describe('parseMacosVoiceList', () => {
       'Albert              en_US    # Hello! My name is Albert.',
       'Eddy (中文（中国大陆）)     zh_CN    # 你好！我叫Eddy。',
       'Grandma (西班牙语（西班牙）) es_ES    # ¡Hola! Me llamo Grandma.',
+      'Majed               ar_001   # مرحبًا! اسمي ماجد.',
       'Tingting            zh_CN    # 你好！我叫婷婷。',
       '',
     ].join('\n')
@@ -106,6 +107,7 @@ describe('parseMacosVoiceList', () => {
       'Albert',
       'Eddy (中文（中国大陆）)',
       'Grandma (西班牙语（西班牙）)',
+      'Majed',
       'Tingting',
     ])
   })

@@ -6,7 +6,7 @@
  * only sees the render text; the spoken utterance lands in the session log
  * as a `dsh-talk/speech` event.
  *
- * A local engine (edge-tts/piper) also writes the audio to a bounded
+ * A local engine (edge-tts/piper/macos) also writes the audio to a bounded
  * plugin-owned file, and the absolute path rides the value and the render text
  * so the model can hand it to another tool (a messenger's file argument). The
  * browser engine has no host bytes and says so explicitly.

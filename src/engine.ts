@@ -159,7 +159,7 @@ export function macosSaySpec(
 export function parseMacosVoiceList(output: string): readonly string[] {
   const names: string[] = []
   for (const line of output.split(/\r?\n/u)) {
-    const match = /^(.+?)\s+[a-z]{2,3}_[A-Za-z]{2}\s+#/u.exec(line)
+    const match = /^(.+?)\s+[a-z]{2,3}_[A-Za-z0-9]{2,3}\s+#/u.exec(line)
     if (match?.[1] !== undefined) names.push(match[1].trim())
   }
   return names
@@ -174,11 +174,40 @@ export function resetMacosVoiceCache(): void {
 }
 
 /**
- * Validate one configured macOS voice against the installed voice table.
- * `say` silently falls back to the system default voice — with exit code 0 —
- * when asked for an unknown voice, so a typo would otherwise change the voice
- * without any signal. A failed listing is tolerated: synthesis itself reports
- * the real error.
+ * List the installed `say` voices for one executable, cached for the host
+ * process. A failed or empty listing returns null so the caller can degrade to
+ * "cannot verify" instead of failing speech.
+ *
+ * @param subprocess - the subprocess service.
+ * @param command - the `say` executable.
+ * @param signal - caller abort signal.
+ * @returns the installed voice names, or null when the table is unreadable.
+ */
+async function listMacosVoices(
+  subprocess: SubprocessRuntime,
+  command: string,
+  signal: AbortSignal,
+): Promise<ReadonlySet<string> | null> {
+  const cached = macosVoiceCache.get(command)
+  if (cached !== undefined) return cached
+  let names: readonly string[] = []
+  try {
+    const { exitCode, stdout } = await runCommand(subprocess, [command, '-v', '?'], '', signal)
+    if (exitCode === 0) names = parseMacosVoiceList(stdout)
+  } catch {
+    names = []
+  }
+  if (names.length === 0) return null
+  const table = new Set(names)
+  macosVoiceCache.set(command, table)
+  return table
+}
+
+/**
+ * Validate one configured macOS voice against the installed voice table. A
+ * rejected name re-lists ONCE first, so a voice installed after the table was
+ * cached is accepted without a host restart. An unreadable table never blocks
+ * speech — `say` itself then owns the outcome.
  *
  * @param subprocess - the subprocess service.
  * @param command - the `say` executable.
@@ -191,25 +220,18 @@ async function ensureMacosVoice(
   voice: string,
   signal: AbortSignal,
 ): Promise<void> {
-  let installed = macosVoiceCache.get(command)
-  if (installed === undefined) {
-    let names: readonly string[] = []
-    try {
-      const { exitCode, stdout } = await runCommand(subprocess, [command, '-v', '?'], '', signal)
-      if (exitCode === 0) names = parseMacosVoiceList(stdout)
-    } catch {
-      names = []
-    }
-    if (names.length === 0) return
-    installed = new Set(names)
-    macosVoiceCache.set(command, installed)
-  }
-  if (!installed.has(voice)) {
-    throw new EngineFailure(
-      `macos: voice ${JSON.stringify(voice)} is not installed for ${command} (see \`say -v '?'\`)`,
-      signal.aborted,
-    )
-  }
+  if (signal.aborted) throw new EngineFailure('macos: interrupted before voice validation', true)
+  const installed = await listMacosVoices(subprocess, command, signal)
+  if (installed === null || installed.has(voice)) return
+  // One refresh: the cached table may predate a voice the user just installed.
+  macosVoiceCache.delete(command)
+  const refreshed = await listMacosVoices(subprocess, command, signal)
+  if (refreshed === null || refreshed.has(voice)) return
+  if (signal.aborted) throw new EngineFailure('macos: interrupted after voice validation', true)
+  throw new EngineFailure(
+    `macos: voice ${JSON.stringify(voice)} is not installed for ${command} (see \`say -v '?'\`)`,
+    false,
+  )
 }
 
 /**
@@ -319,6 +341,7 @@ export async function synthesize(
       const outPath = join(dir, 'speech.wav')
       const voice = voiceOverride ?? resolved.macosVoice
       await ensureMacosVoice(subprocess, resolved.macosCommand, voice, signal)
+      if (signal.aborted) throw new EngineFailure('macos: interrupted before synthesis', true)
       const spec = macosSaySpec(resolved, text, outPath, voice)
       const { exitCode, stderr } = await runCommand(subprocess, spec.argv, spec.stdin, signal)
       if (exitCode !== 0) {

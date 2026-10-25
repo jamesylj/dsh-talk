@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import { resetMacosVoiceCache } from '../src/engine.ts'
 import { mountHarness, speechEventsOf, withKnownSpeechVocabulary, type Harness } from './harness.ts'
 
 let callCounter = 0
@@ -122,6 +123,7 @@ describe('speak tool', () => {
   })
 
   it.skipIf(process.platform !== 'darwin')('synthesizes through the macOS say engine and exports a wav', async () => {
+    resetMacosVoiceCache()
     await withKnownSpeechVocabulary(async () => {
       const harness = await mountHarness()
       harness.subprocess.nextSynthBytes = 'RIFF-fake-macos-audio'
@@ -153,7 +155,36 @@ describe('speak tool', () => {
     })
   })
 
+  it.skipIf(process.platform !== 'darwin')('rejects an unknown macOS voice instead of silently using the default', async () => {
+    resetMacosVoiceCache()
+    const harness = await mountHarness()
+    harness.subprocess.nextStdout = 'Tingting            zh_CN    # 你好！我叫婷婷。\n'
+    const result = await callTool(harness, { text: 'hello', engine: 'macos', voice: 'Bogus Voice', interrupt: false })
+    expect(result.isError).toBe(false)
+    if (result.isError) return
+    const value = result.value as { engine?: string; error?: string }
+    expect(value.engine).toBe('browser')
+    expect(value.error).toContain('not installed')
+    // The listing and its one refresh ran; synthesis never spawned.
+    expect(harness.subprocess.spawns).toHaveLength(2)
+  })
+
+  it('classifies a pre-aborted speak signal as interrupted instead of spawning', async () => {
+    const harness = await mountHarness()
+    const outcome = await harness.service.speak('hello', {
+      reason: 'speak-tool',
+      session: harness.session,
+      signal: AbortSignal.abort(),
+      interrupt: false,
+    })
+    expect(outcome).toMatchObject({ spoken: false, error: 'interrupted' })
+    expect(harness.subprocess.spawns).toHaveLength(0)
+    const speech = speechEventsOf(harness.session).at(-1)?.data as { interrupted?: boolean } | undefined
+    expect(speech?.interrupted).toBe(true)
+  })
+
   it('falls back to the browser voice when the macos engine cannot run', async () => {
+    resetMacosVoiceCache()
     const harness = await mountHarness()
     harness.subprocess.nextExitCode = 1
     harness.subprocess.nextStderr = 'say exploded'

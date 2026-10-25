@@ -240,6 +240,10 @@ export class TalkService extends TypertRemoteService {
     const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal])
     const startedAt = Date.now()
     try {
+      // A signal that is already aborted would make `subprocess.spawn` throw
+      // synchronously, which is not an EngineFailure; classify it here as the
+      // interruption it is (for every local engine).
+      if (signal.aborted) throw new EngineFailure('speech was interrupted before synthesis', true)
       const result = await synthesize(this.ctx.subprocess, this.resolved, localEngine, spoken, signal, options.voice)
       const durationSec = Math.max(0, (Date.now() - startedAt) / 1000)
       this.cacheUtterance(utteranceId, result.mime, result.data, spoken, localEngine)
