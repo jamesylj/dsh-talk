@@ -69,6 +69,7 @@ DeepSeek Harness 的 voice-first 会话闭环：对它说话，听它回答。
 - **输入框麦克风按钮** —— 按下说话，转写文本自动回填输入框（或直接提交）。STT 引擎：浏览器 Web Speech（含中间结果）、FunASR HTTP 服务或本地 `whisper.cpp`。
 - **说话即打断** —— 开始说话即停止当前播报（经 client→host 的 `talk` Remote 通道）。
 - **事件播报** —— 回合完成、待审批（waterfall 安全：绝不阻塞门禁）与出错，带静音开关与可配话术。
+- **自动朗读回复** —— 默认在回合完成时朗读助手的最终回复，走与 `speak` 工具相同的朗读流水线；中止、受阻与出错的回合仍保留「Turn complete.」播报，`autoReply.enabled: false` 可在所有回合恢复旧行为（见「自动朗读回复」）。
 - **设置页签** —— 引擎/语言选择与播报开关，以追加式 profile patch 操作保存（带备份）。
 
 ```text
@@ -205,18 +206,35 @@ Error: dsh-talk: speak text must not be empty
 | `announce.enabled` | `true` | 事件播报总开关 |
 | `announce.onTurnEnd` / `onApproval` / `onError` | `true` | 播报哪些事件 |
 | `announce.messages.*` | *"Turn complete." 等* | 播报话术 |
+| `autoReply.enabled` | `true` | 回合完成后朗读助手的最终回复（走 speak 流水线，见「自动朗读回复」） |
+| `autoReply.maxChars` | `600` | 单次朗读的回复字符上限；超出时在空白处截断（1..100000） |
+| `autoReply.skipIfToolSpoke` | `true` | 本回合已通过 `speak` 工具朗读过，则不再自动朗读 |
+| `autoReply.skipSubagents` | `true` | 子代理/团队代理会话永不自动朗读 |
+| `autoReply.reasons` | `completed`、`max-tokens` | 允许朗读的回合结束原因（`completed` / `max-tokens`）；其它原因不朗读，回退到播报 |
 | `interrupt` | `true` | 开始说话即停止当前播放 |
 | `maxSpeakChars` | `20000` | speak 工具文本上限（1..100000） |
 | `maxAudioCacheBytes` | `8388608` | 内存合成音频缓存上限（1 MiB..64 MiB） |
 
 `stt.silenceFinaliseMs` 与 `record.vad.silenceMs` 是两套独立机制：前者在连续 Web Speech 识别听不到语音时定稿转写文本；后者是 MediaRecorder 的能量检测器，用于结束录音（`record.autoSubmit` 开启时随即提交）。两者处于不同流水线，不共享任何状态。
 
+### 自动朗读回复
+
+默认开启（`autoReply.enabled: true`）：回合正常完成后，助手的最终回复会走与 `speak` 工具相同的朗读流水线读出来 —— 同样的引擎、音色、音频缓存与导出规则。设为 `autoReply.enabled: false` 即关闭，播报路径完全恢复原样。
+
+- **哪些回合**：只读 `autoReply.reasons` 列出的 `turn/end` 原因 —— 默认 `completed` 与 `max-tokens`。中止、受阻与出错的回合不朗读，仍走旧的「Turn complete.」播报。只取该回合最后一条已提交的 `assistant/message`，因此带工具调用的回合读的是最终文本，而不是中间步骤。
+- **读什么**：把回复的文本块用换行拼接，去掉围栏代码块与行内反引号（代码绝不当作散文朗读），再按空白边界截断到 `autoReply.maxChars` 个字符（默认 600，1..100000）。去代码后为空的回复不朗读。
+- **播报抑制**：对于已朗读回复的回合，不再播报通用的「Turn complete.」，两者不会互相打断或叠加。未被处理的回合（结束原因不在列表内、子代理）在 `announce.onTurnEnd` 开启时仍会播报。
+- **不重复朗读**：`autoReply.skipIfToolSpoke: true` 会跳过本回合已经调用过 `speak` 工具的情况；同一条回复按 assistant 消息 id 去重，重复触发也绝不会读两遍。
+- **子代理**：`autoReply.skipSubagents: true` 永不朗读由子代理或团队代理创建的会话（`origin: subagent` 或非零委派深度）。
+- **播放串行**：新的朗读会停止并释放上一段音频播放器，并取消正在进行的浏览器 `SpeechSynthesis`，因此连续自动朗读的回合绝不会叠加。
+- **Wire**：这次朗读以 `auto-reply` 作为原因写入，`talk:speech` 投影与 `talk/latest` 都会带上它；使用本地引擎合成时，它和普通朗读一样导出文件。
+
 ### 音频文件导出
 
 由本地引擎（`edge-tts`、`piper`）合成的每次朗读，除了进入浏览器播放用的内存缓存，还会**额外**写入一个文件。浏览器引擎在客户端合成，因此不导出任何文件 —— 这一状态会**明确报告**，绝不静默。
 
 - **位置**：`tts.export.dir`，默认 `<home>/.dsh-talk/audio`（本插件自己的目录）。它刻意不用宿主的工作目录，因此绝不会污染代码仓；相对路径同样按家目录解析。
-- **命名**：`speech-<YYYYMMDD>T<HHMMSS>Z-<8 位十六进制>.mp3`（edge-tts）或 `.wav`（piper）。时间戳为 UTC，故按名排序即按时间排序；后缀取自 utterance id，可回溯到对应的 `dsh-talk/speech` 日志条目。朗读文本绝不进入文件名。
+- **命名**：`speech-<YYYYMMDD>T<HHMMSS>Z-<8 位十六进制>.mp3`（edge-tts）或 `.wav`（piper）。时间戳为 UTC，故按名排序即按时间排序；后缀取自 utterance id，可回溯到对应的朗读日志条目（`dsh-talk/speech`，`0.2.1+` 宿主上为 `plugin:dsh-talk/speech`）。朗读文本绝不进入文件名。
 - **清理**：每次写入都重新收敛，先按时间、再按数量。早于 `tts.export.maxAgeMinutes`（默认 1440 = 24 小时）的文件被删除，随后从最旧的开始删除，直到目录内不超过 `tts.export.maxFiles` 个（默认 20，含刚写入的那个）。清理只删除匹配本插件 `speech-…` 命名的文件，共享目录中的其它文件绝不触碰。按默认值，目录最多 20 个文件（数 MB），且不会有超过一天的旧文件。
 - **失败**：导出是朗读的附加动作，绝不是前提。目录无法创建或写入时，朗读照常播放，结果里报告 `audioExport: "failed"` 及原因；清理失败被忽略，下次写入时重试。
 - **模型可见的路径**：`speak` 工具的规范值携带 `audioPath`（以及 `audioExport`，无文件时还有 `exportNote`），渲染给模型的结果文本里也有同一路径 —— 因此 agent 可以直接把它交给需要文件路径的其它工具，例如某个消息插件的文件参数。事件播报（回合完成、审批、出错）走同一条流水线，也同样导出，并受同样的上限约束。
@@ -234,15 +252,15 @@ Error: dsh-talk: speak text must not be empty
 ## 权限与数据
 
 - **权限**：插件保留一份内存中、字节受限的音频缓存用于播放，并在使用本地引擎时把合成音频写入自己的受限目录（`tts.export.*`，默认 `<home>/.dsh-talk/audio`，默认最多 20 个文件、保留 24 小时）；麦克风权限由浏览器管理。设置页签只向 profile 追加 patch 片段（带时间戳备份）——绝不重写文件。
-- **数据**：音频字节绝不进入模型上下文或会话日志。在宿主会话词表接受的宿主上，`dsh-talk/speech` 事件携带 utterance id、引擎、原因、大小、脱敏文本，以及适用时的浏览器音色/语速/音高；在无 envelope 的宿主上该事件完全不写。`speak` 工具结果携带导出文件的路径（插件自有目录中的持久产物），其余所有展示/日志面都经过脱敏，凭证、JWT、bearer 头与临时路径都不会出现。
+- **数据**：音频字节绝不进入模型上下文或会话日志。`dsh-talk/speech` 事件携带 utterance id、引擎、原因、大小、脱敏文本，以及适用时的浏览器音色/语速/音高；会话词表认识该事件类型的宿主直接写入，`0.2.1+` 宿主改以实验性的可忽略 plugin record（`plugin:dsh-talk/speech`，见宿主兼容性）写入，无 envelope 的宿主则什么都不写。`speak` 工具结果携带导出文件的路径（插件自有目录中的持久产物），其余所有展示/日志面都经过脱敏，凭证、JWT、bearer 头与临时路径都不会出现。
 - **网络**：只联系你配置的引擎。`edge-tts` 执行网络合成，FunASR 使用其配置的端点，而 Chrome 的 `webkitSpeechRecognition` 会将麦克风音频发送到 Google 服务器进行转写；浏览器的 `speechSynthesis` 播放仍在本机完成。
 
 ## 安全边界
 
-- **模型可见 ⟺ 已记录** —— 模型只看到 speak 工具的规范值与渲染文本。`dsh-talk/speech` 事件只在宿主能够承载它时写入（见宿主兼容性）；`tool/call` + `tool/result` 事件始终是可重建的痕迹。
+- **模型可见 ⟺ 已记录** —— 模型只看到 speak 工具的规范值与渲染文本。`dsh-talk/speech` 事件 —— 宿主词表认识它时是普通会话事件，`0.2.1+` 宿主上是可忽略的 `plugin:dsh-talk/speech` 记录 —— 只在宿主能够承载它时写入（见宿主兼容性）；`tool/call` + `tool/result` 事件始终是可重建的痕迹。
 - **审批播报绝不阻塞** —— `approval/request` 监听器总是调用 `next()`。
 - **输出脱敏** —— 凭据与临时音频路径绝不上日志或展示面。唯一的刻意例外是 speak 结果里的导出音频路径：它是插件自有目录中的持久文件（仍经密钥脱敏），用途正是交给其它工具。
-- **宿主兼容性** —— `dsh-talk/speech` 事件经「是/否」门写入：已知词汇表覆盖该事件的宿主直接追加，且调用方可知追加已发生；其余宿主——截至 `0.1.1-rc.2` 的全部已发布线、`0.1.2-alpha` 线、`0.1.2-rc.1`，以及 `0.1.6-alpha.2`（其 `Session.append` 只能盖章 surface intent，无法盖章 `ignorable` 信封，该字段仅保留用于存量日志读取兼容）——完全不追加，因此语音在这些宿主线上永远不会污染会话日志。跳过不再无声：宿主按会话保留「已追加/已跳过」计数，可由 `talk/latest(sessionId)` 读回；客户端会话级播放列表保持为空，speak 工具结果仍是可重建的审计痕迹。
+- **宿主兼容性** —— `dsh-talk/speech` 事件经三路门写入：已知词汇表覆盖该事件的宿主直接追加，且调用方可知追加已发生；提供实验性 `appendPluginRecord` API 的宿主（`0.2.1+`）追加一条名为 `plugin:dsh-talk/speech` 的可忽略 plugin record（plugin record 的类型语法是 `plugin:` 后接小写斜杠分段），`talk:speech` 投影会像普通事件一样折叠它 —— 实时客户端播放正是由此恢复；两路皆无的宿主——截至 `0.1.1-rc.2` 的全部已发布线、`0.1.2-alpha` 线、`0.1.2-rc.1`，以及 `0.1.6-alpha.2`（其 `Session.append` 只能盖章 surface intent，无法盖章 `ignorable` 信封，该字段仅保留用于存量日志读取兼容）——完全不追加，因此语音在这些宿主线上永远不会污染会话日志。跳过不再无声：宿主按会话保留「已追加/已跳过」计数，可由 `talk/latest(sessionId)` 读回；客户端会话级播放列表保持为空，speak 工具结果仍是可重建的审计痕迹。plugin record 通道需要 `0.2.1+` 宿主。
 - **失败响亮** —— 非法引擎、越界数值、缺模型/端点的引擎配置在挂载时即报错。
 
 ## 已知限制
@@ -252,7 +270,7 @@ Error: dsh-talk: speak text must not be empty
 - **音频文件需要本地引擎**：浏览器语音在客户端合成，因此那里 `speak` 不返回 `audioPath`（结果中会明确说明）；本地引擎失败并回退到浏览器时同样没有文件。导出文件位于插件自有的受限目录 —— 位置、命名与清理规则见「音频文件导出」。
 - **录音格式**：浏览器按其原生 MediaRecorder 编解码器录音；whisper.cpp 可能要求 WAV 录音配置或服务端转换。
 - **设置重载生效**：设置页签追加到 profile patch；重载 profile（或重启 Web 应用）后生效。
-- **无该词汇表的宿主上实时播放历史为空**：在 `0.1.1-rc.2`、`0.1.2-alpha` 线、`0.1.2-rc.1` 与 `0.1.6-alpha.2` 上，宿主词汇表不认识 `dsh-talk/speech`，因此门不写入任何内容，客户端的会话级播放列表保持为空；`talk/latest(sessionId)` 仍返回最新一条朗读与「已跳过」计数。朗读本身、麦克风、设置页签与工具均不受影响。
+- **只有无 envelope 的 `0.1.x` 宿主上实时播放历史为空**：在 `0.1.1-rc.2`、`0.1.2-alpha` 线、`0.1.2-rc.1` 与 `0.1.6-alpha.2` 上，宿主词汇表不认识 `dsh-talk/speech`，且 plugin record 通道不可用，因此门不写入任何内容，客户端的会话级播放列表保持为空；`talk/latest(sessionId)` 仍返回最新一条朗读（包括原因 `auto-reply`）与「已跳过」计数。在 `0.2.1+` 宿主上，plugin record 通道会恢复实时播放。朗读本身、麦克风、设置页签与工具均不受影响。
 - **dsh-talk ≤ 0.2.1 写下的存量日志可能需要在冷加载前修复**：版本 0.2.1 及更早会追加未标记的 `dsh-talk/speech` 事件。在 `0.1.0-rc.7` 及更新的宿主上，日志已含这些事件的会话，其下一次冷加载会以 `SessionFormatUnsupportedError` 失败。修复：停止宿主，备份该会话的 `.jsonl` 日志，为每一行 `"type"` 为 `"dsh-talk/speech"` 的 JSON 记录加上顶层成员 `"ignorable":true`（例如在起始的 `{` 之后插入 `"ignorable":true,`），然后重新打开会话。其余内容不变，不会丢失任何数据；本版本的新追加永远不会产生未标记事件。
 
 ## 开发
@@ -261,7 +279,7 @@ Error: dsh-talk: speak text must not be empty
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc：src + tests，对照本地 harness checkout
 pnpm run typecheck:ci  # tsc：对照已发布的 0.1.7-alpha.2 类型（无 paths）
-pnpm test           # vitest：108 个测试、16 个套件
+pnpm test           # vitest：150 个测试、17 个套件
 pnpm run build      # tsc 声明 + tsdown bundle（lib/）
 pnpm run verify:self-contained  # 依赖声明全部来自 registry
 pnpm run verify:artifacts       # 构建产物 ESM 面 + client ModuleLoader 握手

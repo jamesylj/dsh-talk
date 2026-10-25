@@ -78,6 +78,7 @@ Press the mic, speak, and the reply is spoken back — with speak-to-interrupt.
 - **Composer mic button** — press it, speak, and the transcription lands in the input box (or submits directly). STT engines: the browser's Web Speech (interim results included), a FunASR HTTP server, or local `whisper.cpp`.
 - **Speak-to-interrupt** — starting to talk stops whatever is playing (client → host over the `talk` Remote namespace).
 - **Event announcements** — turn completion, pending approvals (waterfall-safe: never blocks the gate), and errors, with a mute switch and configurable phrases.
+- **Automatic reply read-aloud** — by default the assistant's final reply is spoken when a turn completes, through the same speak pipeline; aborted, blocked, and error turns keep the "Turn complete." announcement, and `autoReply.enabled: false` restores it everywhere (see Automatic reply read-aloud).
 - **Settings tab** — engine/language selects and announcement switches, saved as append-only profile-patch operations with backups.
 
 ```text
@@ -206,18 +207,35 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). `cord
 | `announce.enabled` | `true` | Master switch for event announcements |
 | `announce.onTurnEnd` / `onApproval` / `onError` | `true` | Which events are spoken |
 | `announce.messages.*` | *"Turn complete." etc.* | Spoken phrases |
+| `autoReply.enabled` | `true` | Read the assistant's final reply of a completed turn aloud through the speak pipeline (see Automatic reply read-aloud) |
+| `autoReply.maxChars` | `600` | Cap on the reply characters read aloud; longer replies are truncated at a whitespace boundary (1..100000) |
+| `autoReply.skipIfToolSpoke` | `true` | Do not auto-read a turn that already spoke through the `speak` tool |
+| `autoReply.skipSubagents` | `true` | Never auto-read subagent/team-agent sessions |
+| `autoReply.reasons` | `completed`, `max-tokens` | Turn-end reasons that are read aloud (`completed` / `max-tokens`); other reasons are not read and fall back to the announcement |
 | `interrupt` | `true` | Talking stops current playback |
 | `maxSpeakChars` | `20000` | Cap on the speak tool's text length (1..100000) |
 | `maxAudioCacheBytes` | `8388608` | In-memory synthesized-audio cache cap (1 MiB..64 MiB) |
 
 `stt.silenceFinaliseMs` and `record.vad.silenceMs` are separate mechanisms: the first finalises the Web Speech transcript when continuous recognition hears no speech, the second is the MediaRecorder energy-based detector that ends the recording (and submits it when `record.autoSubmit` is on). They run in different pipelines and share no state.
 
+### Automatic reply read-aloud
+
+By default (`autoReply.enabled: true`) the final assistant reply of a completed turn is read aloud through the same speak pipeline as the `speak` tool — same engine, voice, audio cache, and export rules. `autoReply.enabled: false` turns it off and leaves the announcement path exactly as before.
+
+- **Which turns**: only the `turn/end` reasons listed in `autoReply.reasons` — `completed` and `max-tokens` by default. Aborted, blocked, and error turns are not read and keep the old "Turn complete." announcement. Only the last committed `assistant/message` of that turn is used, so a tool-calling turn reads its final text rather than an interim step.
+- **What is read**: the reply's text blocks joined by newlines, with fenced code blocks and inline backticks stripped — code is never read as prose — then truncated at a whitespace boundary to `autoReply.maxChars` characters (default 600, 1..100000). A reply that is empty after stripping is not read at all.
+- **Announcement suppression**: for a turn whose reply is read, the generic "Turn complete." phrase is not spoken, so the two never talk over each other. A turn that was not handled (a non-listed end reason, a subagent/delegated session) still gets the announcement when `announce.onTurnEnd` is on.
+- **No double-reading**: `autoReply.skipIfToolSpoke: true` skips a turn that already called the `speak` tool, and one reply is deduplicated by assistant message id, so a repeated trigger never speaks it twice.
+- **Subagents**: `autoReply.skipSubagents: true` never reads sessions created by a subagent or team agent (`origin: subagent` or a non-zero delegation depth).
+- **Playback is serialized**: a new utterance stops and releases the previous audio player and cancels any in-flight browser `SpeechSynthesis`, so consecutive auto-read turns never overlap.
+- **Wire**: the utterance is logged with reason `auto-reply`, which the `talk:speech` projection and `talk/latest` carry, and it is exported like any other utterance when a local engine synthesizes it.
+
 ### Audio file export
 
 Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written to a file **in addition to** the in-memory cache the browser plays from. The browser engine synthesizes on the client and therefore exports nothing — that state is reported explicitly, never silently.
 
 - **Where**: `tts.export.dir`, default `<home>/.dsh-talk/audio` — the plugin's own directory. It is deliberately never the host's working directory, so a repository is never polluted; a relative `tts.export.dir` is resolved under the home directory for the same reason.
-- **Names**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) or `.wav` (piper). The stamp is UTC so names sort chronologically, and the token comes from the utterance id, so a file maps back to its `dsh-talk/speech` log entry. The spoken text is never part of a file name.
+- **Names**: `speech-<YYYYMMDD>T<HHMMSS>Z-<8 hex>.mp3` (edge-tts) or `.wav` (piper). The stamp is UTC so names sort chronologically, and the token comes from the utterance id, so a file maps back to its speech log entry (`dsh-talk/speech`, or `plugin:dsh-talk/speech` on `0.2.1+` hosts). The spoken text is never part of a file name.
 - **Cleanup**: bounded on every write, age first and count second. Files older than `tts.export.maxAgeMinutes` (default 1440 = 24 h) are removed, then the oldest files are removed until the directory holds at most `tts.export.maxFiles` (default 20, counting the file just written). Pruning only ever unlinks names matching this plugin's own `speech-…` pattern, so other files in a shared directory are never touched. With the defaults the directory holds at most 20 files (~a few MB) and nothing older than a day.
 - **Failure**: exporting is an addition to speech, never a precondition. If the directory cannot be created or written, the utterance still plays and the result reports `audioExport: "failed"` with the reason; pruning failures are ignored and retried on the next write.
 - **Model-visible path**: the `speak` tool's canonical value carries `audioPath` (plus `audioExport` and, when there is no file, `exportNote`), and the same path is in the rendered result text — so the agent can pass it straight to another tool that takes a file, for example a messenger plugin's file argument. Event announcements (turn end, approval, error) are synthesized through the same pipeline and are exported the same way; they are bounded by the same caps.
@@ -235,15 +253,15 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 ## Permissions & data
 
 - **Permissions**: the plugin keeps an in-memory, byte-capped audio cache for playback and, for local engines, writes the synthesized audio to its own bounded directory (`tts.export.*`, default `<home>/.dsh-talk/audio`, at most 20 files and 24 h old by default); microphone permission is browser-mediated. The settings tab only appends patch fragments to the profile with a timestamped backup — never rewrites the file.
-- **Data**: audio bytes never enter the model context or the session log. Where the host's session vocabulary accepts it, the `dsh-talk/speech` event carries the utterance id, engine, reason, size, sanitized text, and browser voice/rate/pitch when applicable; on envelope-less hosts the event is not written at all. The `speak` tool result carries the exported file's path (a persistent artifact in the plugin's own directory), and everything else on a display/log surface passes the redaction helpers, so credentials, JWTs, bearer headers, and temp paths stay out.
+- **Data**: audio bytes never enter the model context or the session log. The `dsh-talk/speech` event carries the utterance id, engine, reason, size, sanitized text, and browser voice/rate/pitch when applicable; hosts whose session vocabulary knows that event type receive it directly, hosts on `0.2.1+` receive it as an experimental ignorable plugin record (`plugin:dsh-talk/speech` — see Host compatibility), and envelope-less hosts write nothing. The `speak` tool result carries the exported file's path (a persistent artifact in the plugin's own directory), and everything else on a display/log surface passes the redaction helpers, so credentials, JWTs, bearer headers, and temp paths stay out.
 - **Network**: only the engines you configure are contacted. `edge-tts` performs network synthesis, FunASR uses its configured endpoint, and Chrome's `webkitSpeechRecognition` sends microphone audio to Google's servers for transcription; browser `speechSynthesis` playback remains local.
 
 ## Security boundaries
 
-- **Model-visible ⟺ logged** — the model sees only the speak tool's canonical value and render text. The `dsh-talk/speech` event is appended only when the host can carry it (see Host compatibility); the `tool/call` + `tool/result` events always remain the reconstructable trail.
+- **Model-visible ⟺ logged** — the model sees only the speak tool's canonical value and render text. The `dsh-talk/speech` event — a plain session event where the host vocabulary knows it, an ignorable `plugin:dsh-talk/speech` record on `0.2.1+` hosts — is appended only when the host can carry it (see Host compatibility); the `tool/call` + `tool/result` events always remain the reconstructable trail.
 - **Approval announcements never block** — the `approval/request` listener always calls `next()`.
 - **Sanitized output** — credentials and temp audio paths never reach logs or displays. The one deliberate exception is the exported audio path in the speak result, which is a persistent file in the plugin's own directory (still passed through the secret redactor) and is meant to be handed to another tool.
-- **Host compatibility** — the `dsh-talk/speech` event is appended through a yes/no gate. Hosts whose known-type vocabulary covers the event append it, and the call reports that it did; every other host — every released line through `0.1.1-rc.2`, the `0.1.2-alpha` line, `0.1.2-rc.1`, and also `0.1.6-alpha.2`, whose `Session.append` can stamp only the surface intent and not the `ignorable` envelope (that field is retained for stored-log read compatibility only) — gets no append, so speech can never pollute the session log there. The skip is not silent any more: the host keeps per-session appended/skipped counters and `talk/latest(sessionId)` reads them back, the client's session-scoped playback list stays empty, and the speak tool results remain the reconstructable audit trail.
+- **Host compatibility** — the `dsh-talk/speech` event is appended through a three-way gate. Hosts whose known-type vocabulary covers the event append it plainly and the call reports that it did; hosts that publish the experimental `appendPluginRecord` API (`0.2.1+`) append an ignorable plugin record named `plugin:dsh-talk/speech` (the plugin-record type grammar is `plugin:` followed by lowercase slash segments), which the `talk:speech` projection folds exactly like the plain event — this is what restores live client playback there; hosts with neither channel — every released line through `0.1.1-rc.2`, the `0.1.2-alpha` line, `0.1.2-rc.1`, and `0.1.6-alpha.2`, whose `Session.append` can stamp only the surface intent and not the `ignorable` envelope (that field is retained for stored-log read compatibility only) — get no append, so speech can never pollute the session log there. The skip is not silent any more: the host keeps per-session appended/skipped counters and `talk/latest(sessionId)` reads them back, the client's session-scoped playback list stays empty, and the speak tool results remain the reconstructable audit trail. The plugin-record channel needs a `0.2.1+` host.
 - **Fail loud** — invalid engines, out-of-range values, and engines configured without their required model/endpoint fail the mount.
 
 ## Known limitations
@@ -253,7 +271,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 - **Audio files need a local engine**: the browser voice synthesizes on the client, so `speak` returns no `audioPath` there (the result says so explicitly), and a local engine that fails and falls back to the browser also has no file. Exported files live in the plugin's own bounded directory — see Audio file export for the location, naming, and cleanup rules.
 - **Recording format**: the browser records with its native MediaRecorder codec; whisper.cpp may require a WAV-configured recorder or a server-side conversion for other formats.
 - **Settings apply on reload**: the settings tab appends to the profile patch; a profile reload (or web-app restart) activates the changes.
-- **Live playback history is empty on hosts without the vocabulary**: on `0.1.1-rc.2`, the `0.1.2-alpha` line, `0.1.2-rc.1`, and `0.1.6-alpha.2` the host vocabulary does not know `dsh-talk/speech`, so the gate writes nothing and the client's session-scoped playback list stays empty; `talk/latest(sessionId)` still answers with the newest utterance and the skipped counter. Speech itself, the mic, the settings tab, and the tool are unaffected.
+- **Live playback history is empty only on envelope-less `0.1.x` hosts**: on `0.1.1-rc.2`, the `0.1.2-alpha` line, `0.1.2-rc.1`, and `0.1.6-alpha.2` the host vocabulary does not know `dsh-talk/speech` and the plugin-record channel is unavailable, so the gate writes nothing and the client's session-scoped playback list stays empty; `talk/latest(sessionId)` still answers with the newest utterance (including the reason `auto-reply`) and the skipped counter. On `0.2.1+` hosts the plugin-record channel restores live playback. Speech itself, the mic, the settings tab, and the tool are unaffected.
 - **Legacy logs written by dsh-talk ≤ 0.2.1 may need repair before cold load**: versions through `0.2.1` appended unmarked `dsh-talk/speech` events. On hosts `0.1.0-rc.7` and newer, a session whose log already contains them fails its next cold load with `SessionFormatUnsupportedError`. Repair: stop the host, back up the session's `.jsonl` log, add `"ignorable":true` as a top-level member of every JSON line whose `"type"` is `"dsh-talk/speech"` (for example, insert `"ignorable":true,` right after the opening `{`), then reopen the session. Nothing else changes and nothing is lost; new appends from this version never add unmarked events.
 
 ## Development
@@ -262,7 +280,7 @@ Every utterance synthesized by a local engine (`edge-tts`, `piper`) is written t
 pnpm install        # node ^22.19 || >=24
 pnpm run typecheck  # tsc: src + tests against the local harness checkout
 pnpm run typecheck:ci  # tsc against the published 0.1.7-alpha.2 types (no paths)
-pnpm test           # vitest: 108 tests, 16 suites
+pnpm test           # vitest: 150 tests, 17 suites
 pnpm run build      # tsc declarations + tsdown bundles (lib/)
 pnpm run verify:self-contained  # dependency specs resolve from the registry
 pnpm run verify:artifacts       # built ESM faces + client ModuleLoader handshake

@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **The assistant's final reply is read aloud by default.** A turn whose `turn/end` reason is `completed` or `max-tokens` now speaks its last committed `assistant/message` through the same pipeline as the `speak` tool (reason `auto-reply`), and the generic "Turn complete." announcement is suppressed for turns whose reply was read; aborted, blocked, and error turns are not read and keep the announcement. Fenced code blocks and inline backticks are stripped before synthesis, long replies are truncated to `autoReply.maxChars`, a turn that already used the `speak` tool is not re-read, and subagent/team-agent sessions are never read. New config: `autoReply.enabled` (default `true`), `autoReply.maxChars` (default `600`, 1..100000), `autoReply.skipIfToolSpoke` (default `true`), `autoReply.skipSubagents` (default `true`), `autoReply.reasons` (default `completed`, `max-tokens`).
+
+### Fixed
+
+- **Live client playback is restored on DSH 0.2.1+ hosts.** Those hosts do not know the `dsh-talk/speech` vocabulary, so the speech gate appended nothing and the `talk:speech` projection stayed empty — even the `speak` tool was silent. Speech is now logged as an experimental ignorable plugin record named `plugin:dsh-talk/speech` (the plugin-record type grammar is `plugin:` followed by lowercase slash segments) through the host's `appendPluginRecord` API, and the projection folds both that record and the plain `dsh-talk/speech` event, validating a restored payload before it reaches the wire. Hosts with neither channel keep the documented degradation (per-session appended/skipped counters, `talk/latest`).
+- **Client playback is serialized.** A new utterance now stops and releases the previous audio player and cancels any in-flight browser `SpeechSynthesis`, so consecutive auto-read turns never overlap.
+- Compatibility: the plugin-record transport requires a DSH `0.2.1+` host; envelope-less `0.1.x` hosts still get no append and keep the documented fallback.
+
 ## [0.3.26] - 2026-10-24
 
 ### Fixed
