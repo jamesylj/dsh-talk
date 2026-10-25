@@ -200,6 +200,9 @@ Error: dsh-talk: speak text must not be empty
 | `tts.mlx.language` | `Chinese` | 传给模型的语言参数 |
 | `tts.mlx.chunkChars` | `100` | 分句长度（20..500）；越小首音越快、调用次数越多 |
 | `tts.mlx.player` | `/usr/bin/afplay` | 逐块播放的系统播放器（合成下一块时继续播当前块） |
+| `tts.mlx.temperature` | `0.6` | 采样温度（0..1.5）；越低越稳定、越不容易跑出方言/语言漂移 |
+| `tts.mlx.topP` | `0.9` | 核采样 top-p（0.05..1） |
+| `tts.mlx.topK` | `30` | Top-k 采样（0..200） |
 | `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50）；同时按百分比缩放 macOS `say` 的语速 |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` 可执行文件（本地离线；`macos` 引擎仅 macOS 可用） |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | 已安装语音名，须与 `say -v '?'` 列出的完全一致；未知名称会被拒绝，而不是静默改用系统默认语音 |

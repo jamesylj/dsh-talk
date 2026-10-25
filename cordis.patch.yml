@@ -107,6 +107,12 @@
             chunkChars: 100
             # System player used to play each chunk while synthesizing.
             player: /usr/bin/afplay
+            # Sampling: lower temperature/top-p keep the voice stable and avoid
+            # occasional dialect/language drift; markdown tables/links are
+            # stripped before synthesis.
+            temperature: 0.6
+            topP: 0.9
+            topK: 30
           # Exported audio files: every locally synthesized utterance is also
           # written to a file whose absolute path the speak tool returns as
           # audioPath (hand it to another tool's file argument). The browser

@@ -192,6 +192,9 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 | `tts.mlx.language` | `Chinese` | Idioma pasado al modelo |
 | `tts.mlx.chunkChars` | `100` | Tamaño de fragmento (20..500); menor = primer audio más rápido |
 | `tts.mlx.player` | `/usr/bin/afplay` | Reproductor del sistema que suena cada fragmento mientras se sintetiza el siguiente |
+| `tts.mlx.temperature` | `0.6` | Temperatura de muestreo (0..1.5); más baja = más estable, menos deriva de dialecto/idioma |
+| `tts.mlx.topP` | `0.9` | Muestreo nucleus top-p (0.05..1) |
+| `tts.mlx.topK` | `30` | Muestreo top-k (0..200) |
 | `tts.rate` | `0` | Desplazamiento de velocidad en porcentaje (-50..50) para edge-tts/piper; también escala la velocidad de `say` en macOS |
 | `tts.macos.command` | `/usr/bin/say` | Ejecutable `say` de macOS (local y sin conexión; el motor `macos` solo existe en macOS) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Nombre de voz instalada exactamente como lo lista `say -v '?'`; un nombre desconocido se rechaza en vez de usar en silencio la voz por defecto |

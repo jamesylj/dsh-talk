@@ -189,6 +189,9 @@ export class MlxEngine {
           '--chunk-chars', String(this.resolved.mlxChunkChars),
           '--buffer-seconds', '1.5',
           '--player', this.resolved.mlxPlayer,
+          '--temperature', String(this.resolved.mlxTemperature),
+          '--top-p', String(this.resolved.mlxTopP),
+          '--top-k', String(this.resolved.mlxTopK),
         ],
         { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HF_HUB_OFFLINE: '1' } },
       )

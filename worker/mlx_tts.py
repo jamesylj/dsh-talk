@@ -34,6 +34,25 @@ def emit(payload: dict) -> None:
     sys.stdout.flush()
 
 
+def normalize_for_speech(text: str) -> str:
+    """Turn markdown-ish replies into plain spoken text.
+
+    Tables, emphasis markers, headings, links and bare URLs are the usual
+    source of odd syllables (and occasional language drift) in a TTS model;
+    they are collapsed to plain sentences before any synthesis happens.
+    """
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)  # [label](url) -> label
+    text = re.sub(r"https?://\S+", "", text)                 # bare URLs
+    text = re.sub(r"\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?", "，", text)  # |---|---|
+    text = text.replace("|", "，")
+    text = re.sub(r"[*_`#>]+", "", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n+", "。", text)
+    text = re.sub(r"[，。]{2,}", "。", text)
+    text = re.sub(r"^\s*[，。]+", "", text)
+    return text.strip()
+
+
 def split_text(text: str, max_chars: int) -> list[str]:
     parts: list[str] = []
     for sentence in re.split(r"(?<=[。！？；!?;\n])", text):
@@ -137,6 +156,9 @@ def main() -> int:
     parser.add_argument("--chunk-chars", type=int, default=100)
     parser.add_argument("--buffer-seconds", type=float, default=1.5)
     parser.add_argument("--player", default="/usr/bin/afplay")
+    parser.add_argument("--temperature", type=float, default=0.6)
+    parser.add_argument("--top-p", type=float, default=0.9)
+    parser.add_argument("--top-k", type=int, default=30)
     args = parser.parse_args()
 
     from mlx_audio.tts.utils import load_model
@@ -179,7 +201,7 @@ def main() -> int:
     while True:
         request = requests.get()
         request_id = str(request.get("id", ""))
-        text = str(request.get("text", "")).strip()
+        text = normalize_for_speech(str(request.get("text", "")))
         voice = str(request.get("voice") or args.voice)
         chunk_chars = int(request.get("chunkChars") or args.chunk_chars)
         out_dir = str(request.get("outDir") or "")
@@ -207,6 +229,9 @@ def main() -> int:
                     text=chunk,
                     speaker=voice,
                     language=args.lang,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    top_k=args.top_k,
                     stream=True,
                     streaming_interval=0.32,
                 ):

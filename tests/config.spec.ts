@@ -181,5 +181,15 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ tts: { mlx: { voice: '  ' } } })).toThrow(/mlx\.voice/u)
     expect(() => resolveConfig({ tts: { mlx: { model: '' } } })).toThrow(/mlx\.model/u)
   })
+
+  it('resolves the mlx sampling defaults and bounds', () => {
+    const resolved = resolveConfig({ tts: { engine: 'mlx' } })
+    expect(resolved.mlxTemperature).toBe(0.6)
+    expect(resolved.mlxTopP).toBe(0.9)
+    expect(resolved.mlxTopK).toBe(30)
+    expect(() => resolveConfig({ tts: { mlx: { temperature: 2 } } })).toThrow(/mlx\.temperature/u)
+    expect(() => resolveConfig({ tts: { mlx: { topP: 0 } } })).toThrow(/mlx\.topP/u)
+    expect(() => resolveConfig({ tts: { mlx: { topK: 500 } } })).toThrow(/mlx\.topK/u)
+  })
 })
 

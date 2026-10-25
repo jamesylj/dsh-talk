@@ -194,6 +194,12 @@ export interface TtsMlxConfig {
   chunkChars?: number
   /** System player used for streaming playback (default "/usr/bin/afplay"). */
   player?: string
+  /** Sampling temperature (default 0.6; lower = more stable, less dialect drift). */
+  temperature?: number
+  /** Nucleus sampling top-p (default 0.9). */
+  topP?: number
+  /** Top-k sampling (default 30). */
+  topK?: number
 }
 
 /** macOS system voice (`say`) engine configuration. */
@@ -374,6 +380,12 @@ export interface ResolvedConfig {
   mlxChunkChars: number
   /** System player used for MLX playback. */
   mlxPlayer: string
+  /** MLX sampling temperature. */
+  mlxTemperature: number
+  /** MLX top-p sampling. */
+  mlxTopP: number
+  /** MLX top-k sampling. */
+  mlxTopK: number
   /** piper executable. */
   piperCommand: string
   /** piper model path, or null. */
@@ -477,6 +489,9 @@ export const Config: z<Config> = z.object({
       language: z.string().default(DEFAULT_MLX_LANGUAGE),
       chunkChars: z.number().min(MIN_MLX_CHUNK_CHARS).max(MAX_MLX_CHUNK_CHARS).default(DEFAULT_MLX_CHUNK_CHARS),
       player: z.string().default(DEFAULT_MLX_PLAYER),
+      temperature: z.number().min(0).max(1.5).default(0.6),
+      topP: z.number().min(0.05).max(1).default(0.9),
+      topK: z.number().min(0).max(200).default(30),
     }),
     export: z.object({
       enabled: z.boolean().default(true),
@@ -672,6 +687,9 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const mlxChunkChars = numberOf(tts.mlx?.chunkChars, DEFAULT_MLX_CHUNK_CHARS, MIN_MLX_CHUNK_CHARS, MAX_MLX_CHUNK_CHARS, 'tts.mlx.chunkChars')
   const mlxPlayer = stringOf(tts.mlx?.player, DEFAULT_MLX_PLAYER, 'tts.mlx.player')
   if (mlxPlayer.length === 0) throw new Error('dsh-talk: config.tts.mlx.player must not be empty')
+  const mlxTemperature = numberOf(tts.mlx?.temperature, 0.6, 0, 1.5, 'tts.mlx.temperature')
+  const mlxTopP = numberOf(tts.mlx?.topP, 0.9, 0.05, 1, 'tts.mlx.topP')
+  const mlxTopK = numberOf(tts.mlx?.topK, 30, 0, 200, 'tts.mlx.topK')
   const ttsExportEnabled = booleanOf(tts.export?.enabled, true, 'tts.export.enabled')
   const ttsExportDir = resolveExportDir(tts.export?.dir)
   const ttsExportMaxFiles = numberOf(
@@ -761,6 +779,9 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
     mlxLanguage,
     mlxChunkChars,
     mlxPlayer,
+    mlxTemperature,
+    mlxTopP,
+    mlxTopK,
     piperCommand,
     piperModelPath,
     ttsExportEnabled,

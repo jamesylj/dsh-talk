@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.37] - 2026-10-25
+
+### Fixed
+
+- **MLX voice stability: no more random dialect/language segments.** The model's checkpoint defaults sample at temperature 0.9 / top-p 1.0 / top-k 50, and the checkpoint carries separate dialect language IDs; stochastic sampling occasionally drifted into Beijing/Sichuan-flavoured speech mid-reply, and raw markdown tables, `**` markers, URLs and `[label](url)` links added more unstable tokens. The worker now normalizes markdown to plain spoken sentences before synthesis (tables → commas, links → label, URLs dropped, emphasis/heading markers removed) and samples at `temperature=0.6`, `topP=0.9`, `topK=30` by default. New config: `tts.mlx.temperature`, `tts.mlx.topP`, `tts.mlx.topK` (tune up if you want more expressive prosody).
+
 ## [0.3.36] - 2026-10-25
 
 ### Fixed
