@@ -57,6 +57,14 @@ interface StoredUtterance {
   engine: LocalTtsEngine
 }
 
+/** One in-flight local synthesis, retained so interruption can be scoped. */
+interface ActiveSynthesis {
+  /** Aborts this utterance's engine work (and its playback, for MLX). */
+  readonly controller: AbortController
+  /** Session that owns the utterance; absent for headless calls. */
+  readonly sessionId?: string
+}
+
 /** Engine-specific delivery fields recorded with one speech event. */
 type SpeechDelivery =
   | { readonly engine: 'browser'; readonly voice?: string; readonly rate: number; readonly pitch: number }
@@ -174,8 +182,8 @@ export class TalkService extends TypertRemoteService {
   private readonly utterances = new Map<string, StoredUtterance>()
   /** Total cached audio bytes. */
   private totalCachedBytes = 0
-  /** In-flight local syntheses by utterance id (abortable for interruption). */
-  private readonly activeSyntheses = new Map<string, AbortController>()
+  /** In-flight local syntheses by utterance id, scoped by session for interruption. */
+  private readonly activeSyntheses = new Map<string, ActiveSynthesis>()
   /** Resident MLX worker (model stays warm across utterances); lazily spawned. */
   private mlxEngine: MlxEngine | null = null
   /**
@@ -230,7 +238,14 @@ export class TalkService extends TypertRemoteService {
     const spoken = sanitizeText(text, this.resolved.maxSpeakChars)
     if (spoken === '') throw new Error('dsh-talk: speak text must not be empty')
 
-    if (options.interrupt !== false) this.interrupt()
+    // Preemption is SCOPED: a new utterance only stops speech the SAME session
+    // already had in flight. Announcements and auto-reads pass
+    // `interrupt: false`, so a long read plays to completion instead of being
+    // cancelled by the next turn, approval, or error announcement (a queued
+    // request then plays after it — the MLX worker serializes requests).
+    if (options.interrupt !== false) {
+      this.interrupt(options.session === undefined ? undefined : { sessionId: String(options.session.id) })
+    }
 
     const engine = resolveTtsEngine(options.engine, this.resolved)
     const utteranceId = randomUUID()
@@ -252,7 +267,10 @@ export class TalkService extends TypertRemoteService {
 
     const localEngine = engine // edge-tts | macos | mlx | piper
     const controller = new AbortController()
-    this.activeSyntheses.set(utteranceId, controller)
+    this.activeSyntheses.set(utteranceId, {
+      controller,
+      ...(options.session === undefined ? {} : { sessionId: String(options.session.id) }),
+    })
     const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal])
     const startedAt = Date.now()
     try {
@@ -550,15 +568,37 @@ export class TalkService extends TypertRemoteService {
     return { text, engine, language: this.resolved.sttLanguage }
   }
 
-  /** Stop every in-flight local synthesis (the user started talking). */
-  interrupt(): TalkInterruptResult {
+  /**
+   * Stop every in-flight local synthesis (the user started talking).
+   *
+   * @param scope - optional session restriction. The mic button calls this
+   *   unscoped and stops every session's speech; the speak pipeline passes the
+   *   calling session's id so one session can never cancel another session's
+   *   long read.
+   * @returns whether anything was stopped.
+   */
+  interrupt(scope?: { readonly sessionId?: string }): TalkInterruptResult {
+    const sessionId = scope?.sessionId
     let stopped = false
-    for (const controller of this.activeSyntheses.values()) {
+    // Iterate over a snapshot: the map is mutated while aborting.
+    for (const [utteranceId, active] of [...this.activeSyntheses]) {
+      if (sessionId !== undefined && active.sessionId !== sessionId) continue
       stopped = true
-      controller.abort()
+      active.controller.abort()
+      this.activeSyntheses.delete(utteranceId)
     }
-    this.activeSyntheses.clear()
     return { stopped }
+  }
+
+  /**
+   * Whether a local synthesis is in flight right now (for MLX its audio may
+   * still be playing). Announcements use this to stay silent instead of
+   * queueing a stale line behind a long read.
+   *
+   * @returns true while at least one utterance is being synthesized.
+   */
+  isSpeaking(): boolean {
+    return this.activeSyntheses.size > 0
   }
 
   /**

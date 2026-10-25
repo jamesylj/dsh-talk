@@ -250,6 +250,8 @@ describe('AutoReplyController', () => {
     expect(calls[0]).toMatchObject({ text: 'Here is the final answer.' })
     expect(calls[0]?.options.reason).toBe('auto-reply')
     expect(calls[0]?.options.session).toBe(session)
+    // Auto-read never preempts in-flight speech: long reads must finish.
+    expect(calls[0]?.options.interrupt).toBe(false)
     expect(messageId).toBeDefined()
   })
 

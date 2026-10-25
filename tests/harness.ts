@@ -40,6 +40,11 @@ export class FakeSubprocessRuntime extends SubprocessRuntime {
   nextStderr = ''
   /** When set, a spawn whose argv names an audio output (`--write-media <path>` or `-o <path>`) writes these bytes there (successful local synthesis). */
   nextSynthBytes: string | null = null
+  /**
+   * When set, the NEXT spawn's `done` waits for this gate, keeping one
+   * synthesis in flight so interruption/preemption is observable.
+   */
+  nextDoneGate: Promise<void> | null = null
   /** Every spawn spec recorded. */
   spawns: SubprocessSpawnSpec[] = []
 
@@ -57,6 +62,8 @@ export class FakeSubprocessRuntime extends SubprocessRuntime {
 
   spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
     this.spawns.push(spec)
+    const gate = this.nextDoneGate
+    this.nextDoneGate = null
     let mediaWrite: Promise<void> = Promise.resolve()
     if (this.nextSynthBytes !== null) {
       const markers = ['--write-media', '-o']
@@ -88,7 +95,7 @@ export class FakeSubprocessRuntime extends SubprocessRuntime {
       stderr: undefined,
       control: undefined,
       collected,
-      done: mediaWrite.then(() => outcome),
+      done: (gate ?? Promise.resolve()).then(() => mediaWrite).then(() => outcome),
       terminate: () => undefined,
       waitForExit: async () => true,
     }

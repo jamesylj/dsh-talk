@@ -71,6 +71,11 @@ export interface AutoReplySpeakOptions {
   readonly reason: 'auto-reply'
   /** Session the utterance is logged to. */
   readonly session: Session
+  /**
+   * Auto-read never preempts in-flight speech: a long read must finish, and a
+   * queued read plays after it (the MLX worker serializes requests).
+   */
+  readonly interrupt: false
 }
 
 /** Speak callback: `TalkService.speak` in production, a spy in tests. */
@@ -314,7 +319,7 @@ export class AutoReplyController {
       if (!('turn' in finding)) return true
       if (this.spokenMessages.get(session) === finding.messageId) return true
       this.spokenMessages.set(session, finding.messageId)
-      void this.speak(finding.text, { reason: 'auto-reply', session }).catch(() => undefined)
+      void this.speak(finding.text, { reason: 'auto-reply', session, interrupt: false }).catch(() => undefined)
       return true
     } catch {
       // A log read cannot fail on a live session, but the listener must never

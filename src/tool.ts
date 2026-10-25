@@ -98,7 +98,7 @@ export function speakTool(service: TalkService, maxChars: number) {
       },
       interrupt: {
         type: 'boolean',
-        description: 'Interrupt any speech currently playing before starting (default true).',
+        description: 'Interrupt speech this session already has in flight before starting (default true); other sessions are never preempted.',
       },
     },
     output: {

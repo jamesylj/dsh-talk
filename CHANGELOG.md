@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.39] - 2026-10-25
+
+### Fixed
+
+- **Long replies are read to the end.** A new utterance used to abort every in-flight synthesis (`speak()` called a global `interrupt()`), so a long auto-read was cut off whenever the next turn's auto-read, a turn-end/approval/error announcement, or another session's speech started. Interruption is now scoped to the calling session, the auto-read and announcement listeners pass `interrupt: false` (a queued utterance plays after the current one — the resident MLX worker serializes requests), and announcements stay silent while an utterance is in flight instead of queueing a stale line. Only the mic button (unscoped `talk/interrupt`) — or an explicit same-session `speak ... interrupt: true` — stops the current read.
+
 ## [0.3.38] - 2026-10-25
 
 ### Added

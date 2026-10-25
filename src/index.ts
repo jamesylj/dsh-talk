@@ -160,13 +160,17 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     if (!runningAgents.delete(agent)) return
     if (autoReply.handle(agent.session)) return
     if (!resolved.announceEnabled || !resolved.announceOnTurnEnd) return
-    void service.speak(resolved.messageTurnEnd, { reason: 'turn-end', session: agent.session })
+    // Never talk over an in-flight utterance: a long read must play to
+    // completion, and a queued "Turn complete." would be stale by then.
+    if (service.isSpeaking()) return
+    void service.speak(resolved.messageTurnEnd, { reason: 'turn-end', session: agent.session, interrupt: false })
   })
 
   // Error announcement: emit-mode notification, fire-and-forget speech.
   ctx.on('agent/error', ({ agent }) => {
     if (!resolved.announceEnabled || !resolved.announceOnError) return
-    void service.speak(resolved.messageError, { reason: 'error', session: agent.session })
+    if (service.isSpeaking()) return
+    void service.speak(resolved.messageError, { reason: 'error', session: agent.session, interrupt: false })
   })
 
   // Approval announcement: waterfall listener — always delegates with next()
@@ -174,10 +178,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // the ApprovalRequestEvent payload; the listener types it by inference.
   ctx.on('approval/request', (request, next) => {
     const outcome = next()
-    if (resolved.announceEnabled && resolved.announceOnApproval) {
+    if (resolved.announceEnabled && resolved.announceOnApproval && !service.isSpeaking()) {
       const session = (request.agent as { session?: unknown }).session
       if (session !== undefined) {
-        void service.speak(resolved.messageApproval, { reason: 'approval', session: session as never }).catch(() => {})
+        void service.speak(resolved.messageApproval, { reason: 'approval', session: session as never, interrupt: false }).catch(() => {})
       }
     }
     return outcome
