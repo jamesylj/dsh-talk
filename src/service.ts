@@ -24,7 +24,7 @@ import { resolveConfig } from './config.ts'
 import type { AudioExportState, ExportOutcome, LocalTtsEngine } from './audio-export.ts'
 import { BROWSER_EXPORT_NOTE, exportSynthesizedAudio } from './audio-export.ts'
 import { EngineFailure, synthesize, transcribeFunasr, transcribeWhisper } from './engine.ts'
-import { synthesizeMlx } from './mlx.ts'
+import { MlxEngine } from './mlx.ts'
 import { sanitizeText } from './sanitize.ts'
 import {
   appendSettingsFragment,
@@ -176,6 +176,8 @@ export class TalkService extends TypertRemoteService {
   private totalCachedBytes = 0
   /** In-flight local syntheses by utterance id (abortable for interruption). */
   private readonly activeSyntheses = new Map<string, AbortController>()
+  /** Resident MLX worker (model stays warm across utterances); lazily spawned. */
+  private mlxEngine: MlxEngine | null = null
   /**
    * Per-session speech-loop records, so a host that cannot carry the
    * `dsh-talk/speech` event is observable instead of silently dropping every
@@ -198,6 +200,19 @@ export class TalkService extends TypertRemoteService {
     private readonly backupCount: number,
   ) {
     super(ctx, 'talk')
+    const effect = (ctx as unknown as { effect?: (register: () => () => void) => unknown }).effect
+    if (typeof effect === 'function') {
+      effect(() => () => {
+        this.mlxEngine?.dispose()
+        this.mlxEngine = null
+      })
+    }
+  }
+
+  /** Lazily start the resident MLX worker. */
+  private getMlxEngine(): MlxEngine {
+    if (this.mlxEngine === null) this.mlxEngine = new MlxEngine(this.resolved)
+    return this.mlxEngine
   }
 
   /**
@@ -249,7 +264,7 @@ export class TalkService extends TypertRemoteService {
         // MLX renders in a worker that plays each chunk through the system
         // player as it is synthesized, so the full WAV is only available when
         // the worker exits; the outcome still carries the file for audioPath.
-        const result = await synthesizeMlx(this.resolved, spoken, signal, options.voice)
+        const result = await this.getMlxEngine().synthesize(spoken, options.voice, signal)
         this.cacheUtterance(utteranceId, result.mime, result.data, spoken, 'mlx')
         const exported = await this.exportAudio(utteranceId, 'mlx', result.data)
         const durationSec = result.audioSec > 0 ? result.audioSec : Math.max(0, (Date.now() - startedAt) / 1000)

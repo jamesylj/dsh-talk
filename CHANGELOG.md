@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.36] - 2026-10-25
+
+### Fixed
+
+- **MLX chunk playback no longer overlaps.** The previous worker spawned one `afplay` per sentence chunk without waiting, so a long reply played several segments on top of each other. The worker is now a resident process that queues every generated fragment into ONE continuous sounddevice output stream (1.5 s startup buffer, silence on underrun), keeps the model warm between utterances (no per-reply model load), supports cancellation between fragments, and falls back to a single blocking playback of the finished WAV when no audio device is available. Requests are serialized by the host client; abort sends `cancel` instead of killing the warm worker.
+
 ## [0.3.35] - 2026-10-25
 
 ### Added

@@ -1,17 +1,16 @@
 /**
- * MLX local TTS engine: one renderer process per utterance.
+ * Resident MLX TTS worker client.
  *
- * The bundled `worker/mlx_tts.py` loads a quantized Qwen3-TTS model, splits the
- * text on sentence boundaries, synthesizes each chunk, and plays every chunk as
- * soon as it exists through the system player (afplay on macOS). The host waits
- * for the process, then returns the concatenated WAV so the speak pipeline can
- * cache/export/record it like any other local engine. Killing the process
- * (abort signal) stops the active player and exits 143, which the service
- * classifies as `interrupted`.
+ * The bundled `worker/mlx_tts.py` loads a quantized Qwen3-TTS model once and
+ * keeps it warm. Each request streams generated fragments into ONE continuous
+ * sounddevice output stream (a single player: no per-chunk overlap and no gaps
+ * between sentences) and writes the concatenated WAV for the speak pipeline.
+ * Requests are serialized; an abort sends `cancel` so the model stays loaded.
  *
  * @module dsh-talk/mlx
  */
-import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -28,7 +27,7 @@ export interface MlxSynthResult {
   mime: 'audio/wav'
   /** Audio duration printed by the worker, in seconds. */
   audioSec: number
-  /** Time from worker start to the first audible chunk (null when unknown). */
+  /** Time from worker request start to the first audible fragment. */
   firstAudioSec: number | null
   /** Worker synthesis time (all chunks), in seconds. */
   synthSec: number
@@ -39,130 +38,279 @@ export function defaultMlxScript(): string {
   return fileURLToPath(new URL('../worker/mlx_tts.py', import.meta.url))
 }
 
-/** Stdout/stderr caps for one worker run (progress JSON + failure text). */
-const MAX_STDOUT = 256 * 1024
-const MAX_STDERR = 64 * 1024
+/** One worker stdout line (only the fields this client consumes). */
+interface WorkerEvent {
+  type?: string
+  id?: string
+  file?: string
+  audioSec?: number
+  firstAudioSec?: number
+  synthSec?: number
+  message?: string
+}
+
+/** Ready timeout: model load is ~2 s warm, up to a couple of minutes cold. */
+const READY_TIMEOUT_MS = 120_000
+
+/** Pending request handlers keyed by request id. */
+interface PendingRequest {
+  resolve: (result: MlxSynthResult) => void
+  reject: (error: Error) => void
+  outDir: string
+}
 
 /**
- * Render one utterance with the MLX worker.
- *
- * @param resolved - resolved config (command/model/voice/chunkChars/player).
- * @param text - text to speak (sanitized by the caller).
- * @param signal - abort signal; firing it kills the worker and its player.
- * @param voiceOverride - per-call voice override.
- * @returns the concatenated WAV plus worker timing facts.
+ * One resident worker plus its request queue. Create lazily, dispose with the
+ * plugin fiber.
  */
-export async function synthesizeMlx(
-  resolved: ResolvedConfig,
-  text: string,
-  signal: AbortSignal,
-  voiceOverride?: string,
-): Promise<MlxSynthResult> {
-  if (signal.aborted) throw new EngineFailure('mlx: interrupted before synthesis', true)
-  const script = resolved.mlxScript ?? defaultMlxScript()
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-talk-mlx-'))
-  const outPath = join(dir, 'speech.wav')
-  try {
-    return await new Promise<MlxSynthResult>((resolve, reject) => {
-      const child = spawn(
-        resolved.mlxCommand,
+export class MlxEngine {
+  private child: ChildProcessWithoutNullStreams | null = null
+  private readyPromise: Promise<void> | null = null
+  private readyResolve: (() => void) | null = null
+  private readyReject: ((error: Error) => void) | null = null
+  private stdoutBuffer = ''
+  private stderrTail = ''
+  private readonly pending = new Map<string, PendingRequest>()
+  private tail: Promise<unknown> = Promise.resolve()
+  private disposed = false
+  private readyTimer: NodeJS.Timeout | null = null
+
+  constructor(private readonly resolved: ResolvedConfig) {}
+
+  /**
+   * Synthesize one utterance through the resident worker.
+   *
+   * @param text - text to speak (sanitized by the caller).
+   * @param voice - per-call voice override, or undefined for the configured one.
+   * @param signal - abort signal; firing it cancels this request (worker stays warm).
+   * @returns the concatenated WAV plus worker timing facts.
+   */
+  synthesize(text: string, voice: string | undefined, signal: AbortSignal): Promise<MlxSynthResult> {
+    const run = this.tail.then(
+      () => this.runRequest(text, voice, signal),
+      () => this.runRequest(text, voice, signal),
+    )
+    this.tail = run.catch(() => undefined)
+    return run
+  }
+
+  /** Kill the worker (plugin unload / host shutdown). */
+  dispose(): void {
+    this.disposed = true
+    this.failAll(new EngineFailure('mlx: worker disposed', true))
+    if (this.child !== null) {
+      try {
+        this.child.kill('SIGTERM')
+      } catch {
+        // Already gone.
+      }
+      this.child = null
+    }
+    this.readyPromise = null
+    this.readyResolve = null
+    this.readyReject = null
+    if (this.readyTimer !== null) {
+      clearTimeout(this.readyTimer)
+      this.readyTimer = null
+    }
+  }
+
+  private async runRequest(text: string, voice: string | undefined, signal: AbortSignal): Promise<MlxSynthResult> {
+    if (this.disposed) throw new EngineFailure('mlx: worker disposed', true)
+    if (signal.aborted) throw new EngineFailure('mlx: interrupted before synthesis', true)
+    await this.ensureReady(signal)
+    const child = this.child
+    if (child === null) throw new EngineFailure('mlx: worker is not running', false)
+    const id = randomUUID()
+    const outDir = await mkdtemp(join(tmpdir(), 'dsh-talk-mlx-'))
+    try {
+      return await new Promise<MlxSynthResult>((resolve, reject) => {
+        const cleanup = (): void => {
+          signal.removeEventListener('abort', onAbort)
+          this.pending.delete(id)
+        }
+        const onAbort = (): void => {
+          this.send({ type: 'cancel', id })
+          cleanup()
+          void rm(outDir, { recursive: true, force: true }).catch(() => {})
+          reject(new EngineFailure('mlx: interrupted', true))
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        this.pending.set(id, {
+          resolve: result => {
+            cleanup()
+            resolve(result)
+          },
+          reject: error => {
+            cleanup()
+            reject(error)
+          },
+          outDir,
+        })
+        try {
+          this.send({
+            id,
+            text,
+            ...(voice === undefined ? {} : { voice }),
+            chunkChars: this.resolved.mlxChunkChars,
+            outDir,
+          })
+        } catch (error) {
+          cleanup()
+          reject(new EngineFailure(`mlx: failed to send request: ${sanitizeText(error instanceof Error ? error.message : String(error))}`, signal.aborted))
+        }
+      })
+    } catch (error) {
+      await rm(outDir, { recursive: true, force: true }).catch(() => {})
+      throw error
+    }
+  }
+
+  private ensureReady(signal: AbortSignal): Promise<void> {
+    if (this.child !== null && this.readyPromise !== null) return this.readyPromise
+    if (this.readyPromise !== null) return this.readyPromise
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve
+      this.readyReject = reject
+    })
+    this.readyTimer = setTimeout(() => {
+      this.failReady(new EngineFailure(`mlx: worker did not become ready within ${READY_TIMEOUT_MS / 1000}s`, false))
+    }, READY_TIMEOUT_MS)
+    const script = this.resolved.mlxScript ?? defaultMlxScript()
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = spawn(
+        this.resolved.mlxCommand,
         [
           script,
-          '--model', resolved.mlxModel,
-          '--voice', voiceOverride ?? resolved.mlxVoice,
-          '--lang', resolved.mlxLanguage,
-          '--chunk-chars', String(resolved.mlxChunkChars),
-          '--player', resolved.mlxPlayer,
-          '--out', outPath,
+          '--model', this.resolved.mlxModel,
+          '--voice', this.resolved.mlxVoice,
+          '--lang', this.resolved.mlxLanguage,
+          '--chunk-chars', String(this.resolved.mlxChunkChars),
+          '--buffer-seconds', '1.5',
+          '--player', this.resolved.mlxPlayer,
         ],
         { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HF_HUB_OFFLINE: '1' } },
       )
-      let stdout = ''
-      let stderr = ''
-      let audioSec = 0
-      let synthSec = 0
-      let firstAudioSec: number | null = null
-      let settled = false
-      const cap = (current: string, chunk: string, max: number): string => {
-        const text = current + chunk
-        return text.length > max ? text.slice(0, max) : text
-      }
-      child.stdout?.on('data', (bytes: Buffer) => {
-        const chunk = bytes.toString('utf8')
-        stdout = cap(stdout, chunk, MAX_STDOUT)
-        for (const line of chunk.split('\n')) {
-          if (line.trim() === '') continue
-          try {
-            const event = JSON.parse(line) as {
-              phase?: string
-              audioSec?: number
-              synthSec?: number
-              firstAudioSec?: number | null
-            }
-            if (event.phase === 'chunk' && typeof event.firstAudioSec === 'number') firstAudioSec = event.firstAudioSec
-            if (event.phase === 'done') {
-              if (typeof event.audioSec === 'number') audioSec = event.audioSec
-              if (typeof event.synthSec === 'number') synthSec = event.synthSec
-              if (typeof event.firstAudioSec === 'number') firstAudioSec = event.firstAudioSec
-            }
-          } catch {
-            // A torn/late line is diagnostics only.
-          }
-        }
-      })
-      child.stderr?.on('data', (bytes: Buffer) => {
-        stderr = cap(stderr, bytes.toString('utf8'), MAX_STDERR)
-      })
-      const onAbort = (): void => {
-        try {
-          child.kill('SIGTERM')
-        } catch {
-          // The worker already exited.
-        }
-      }
-      signal.addEventListener('abort', onAbort, { once: true })
-      child.on('error', error => {
-        if (settled) return
-        settled = true
-        signal.removeEventListener('abort', onAbort)
-        reject(new EngineFailure(`mlx failed to start: ${sanitizeText(error.message)}`, signal.aborted))
-      })
-      child.on('close', (code, exitSignal) => {
-        if (settled) return
-        settled = true
-        signal.removeEventListener('abort', onAbort)
-        void (async () => {
-          try {
-            if (signal.aborted || code === 143 || code === 130 || exitSignal === 'SIGTERM') {
-              throw new EngineFailure('mlx: interrupted', true)
-            }
-            if (code !== 0) {
-              throw new EngineFailure(`mlx exited ${String(code)}: ${sanitizeText(stderr)}`, false)
-            }
-            const data = await readFile(outPath)
-            if (data.byteLength === 0) throw new EngineFailure('mlx produced no audio', false)
-            resolve({ data, mime: 'audio/wav', audioSec, firstAudioSec, synthSec })
-          } catch (error) {
-            reject(error)
-          } finally {
-            await rm(dir, { recursive: true, force: true }).catch(() => {})
-          }
-        })()
-      })
-      try {
-        child.stdin?.on('error', () => undefined)
-        child.stdin?.end(text)
-      } catch (error) {
-        onAbort()
-        if (!settled) {
-          settled = true
-          signal.removeEventListener('abort', onAbort)
-          reject(new EngineFailure(`mlx failed to receive text: ${sanitizeText(error instanceof Error ? error.message : String(error))}`, signal.aborted))
-        }
-      }
+    } catch (error) {
+      this.failReady(new EngineFailure(`mlx failed to start: ${sanitizeText(error instanceof Error ? error.message : String(error))}`, false))
+      return this.readyPromise
+    }
+    this.child = child
+    this.stdoutBuffer = ''
+    this.stderrTail = ''
+    child.stdout.on('data', (bytes: Buffer) => this.onStdout(bytes.toString('utf8')))
+    child.stderr.on('data', (bytes: Buffer) => {
+      this.stderrTail = (this.stderrTail + bytes.toString('utf8')).slice(-8192)
     })
-  } catch (error) {
-    await rm(dir, { recursive: true, force: true }).catch(() => {})
-    throw error
+    child.on('error', error => {
+      this.failReady(new EngineFailure(`mlx failed to start: ${sanitizeText(error.message)}`, false))
+      this.onExit()
+    })
+    child.on('close', () => this.onExit())
+    if (signal.aborted) {
+      this.failReady(new EngineFailure('mlx: interrupted', true))
+    }
+    return this.readyPromise
+  }
+
+  private onStdout(chunk: string): void {
+    this.stdoutBuffer += chunk
+    let newline = this.stdoutBuffer.indexOf('\n')
+    while (newline >= 0) {
+      const line = this.stdoutBuffer.slice(0, newline).trim()
+      this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1)
+      newline = this.stdoutBuffer.indexOf('\n')
+      if (line !== '') this.onEventLine(line)
+    }
+  }
+
+  private onEventLine(line: string): void {
+    let event: WorkerEvent
+    try {
+      event = JSON.parse(line) as WorkerEvent
+    } catch {
+      return
+    }
+    if (event.type === 'ready') {
+      if (this.readyTimer !== null) {
+        clearTimeout(this.readyTimer)
+        this.readyTimer = null
+      }
+      this.readyResolve?.()
+      this.readyResolve = null
+      this.readyReject = null
+      return
+    }
+    if (event.type === 'error' && event.id === undefined) {
+      this.failReady(new EngineFailure(`mlx worker error: ${sanitizeText(event.message ?? 'unknown')}`, false))
+      return
+    }
+    const id = event.id
+    if (id === undefined) return
+    const pending = this.pending.get(id)
+    if (pending === undefined) return
+    if (event.type === 'cancelled') {
+      void rm(pending.outDir, { recursive: true, force: true }).catch(() => {})
+      pending.reject(new EngineFailure('mlx: interrupted', true))
+      return
+    }
+    if (event.type === 'error') {
+      void rm(pending.outDir, { recursive: true, force: true }).catch(() => {})
+      pending.reject(new EngineFailure(`mlx failed: ${sanitizeText(event.message ?? 'unknown')}`, false))
+      return
+    }
+    if (event.type !== 'done' || event.file === undefined) return
+    void (async () => {
+      try {
+        const data = await readFile(event.file as string)
+        if (data.byteLength === 0) throw new EngineFailure('mlx produced no audio', false)
+        pending.resolve({
+          data,
+          mime: 'audio/wav',
+          audioSec: typeof event.audioSec === 'number' ? event.audioSec : 0,
+          firstAudioSec: typeof event.firstAudioSec === 'number' ? event.firstAudioSec : null,
+          synthSec: typeof event.synthSec === 'number' ? event.synthSec : 0,
+        })
+      } catch (error) {
+        pending.reject(error instanceof Error ? error : new EngineFailure(String(error), false))
+      } finally {
+        void rm(pending.outDir, { recursive: true, force: true }).catch(() => {})
+      }
+    })()
+  }
+
+  private onExit(): void {
+    this.child = null
+    if (this.readyPromise !== null && this.readyReject !== null) {
+      this.failReady(new EngineFailure(`mlx worker exited before ready${this.stderrTail === '' ? '' : `: ${sanitizeText(this.stderrTail)}`}`, false))
+    }
+    this.failAll(new EngineFailure(`mlx worker exited${this.stderrTail === '' ? '' : `: ${sanitizeText(this.stderrTail)}`}`, false))
+    this.readyPromise = null
+  }
+
+  private failReady(error: Error): void {
+    if (this.readyTimer !== null) {
+      clearTimeout(this.readyTimer)
+      this.readyTimer = null
+    }
+    const reject = this.readyReject
+    this.readyReject = null
+    this.readyResolve = null
+    this.readyPromise = null
+    reject?.(error)
+  }
+
+  private failAll(error: Error): void {
+    for (const pending of this.pending.values()) {
+      pending.reject(error)
+    }
+    this.pending.clear()
+  }
+
+  private send(payload: Record<string, unknown>): void {
+    const child = this.child
+    if (child === null || child.stdin.destroyed) throw new EngineFailure('mlx: worker is not running', false)
+    child.stdin.write(`${JSON.stringify(payload)}\n`)
   }
 }
