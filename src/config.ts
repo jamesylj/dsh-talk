@@ -16,6 +16,9 @@ export type SttEngine = 'auto' | 'web' | 'funasr' | 'whisper'
 /** Text-to-speech engines. `auto` prefers piper, then edge-tts, then the browser voice. */
 export type TtsEngine = 'auto' | 'browser' | 'edge-tts' | 'piper'
 
+/** Turn-end reasons that can trigger auto-read of the assistant's final reply. */
+export type AutoReplyReason = 'completed' | 'max-tokens'
+
 /** Default recording cap in seconds. */
 export const DEFAULT_MAX_RECORD_SECONDS = 60
 
@@ -33,6 +36,15 @@ export const DEFAULT_SILENCE_FINALISE_MS = 4000
 
 /** Default announce-master switch. */
 export const DEFAULT_ANNOUNCE_ENABLED = true
+
+/** Default cap on one auto-read utterance in characters. */
+export const DEFAULT_AUTO_REPLY_MAX_CHARS = 600
+
+/** Ceiling for one auto-read utterance (the speak tool's ceiling). */
+export const MAX_AUTO_REPLY_MAX_CHARS = 100_000
+
+/** Turn-end reasons that trigger auto-read by default (frozen: it is the resolver's fallback). */
+export const DEFAULT_AUTO_REPLY_REASONS: readonly AutoReplyReason[] = Object.freeze(['completed', 'max-tokens'])
 
 /** Default in-memory audio cache cap in bytes (8 MiB). */
 export const DEFAULT_MAX_AUDIO_CACHE_BYTES = 8 * 1024 * 1024
@@ -183,6 +195,20 @@ export interface AnnounceConfig {
   }
 }
 
+/** Default auto-read of the assistant's final reply. */
+export interface AutoReplyConfig {
+  /** Read the assistant's final reply aloud when a turn ends (default true). */
+  enabled?: boolean
+  /** Cap on the spoken reply in characters; longer replies truncate at a word boundary (default 600). */
+  maxChars?: number
+  /** Skip auto-read when the same turn already called the speak tool (default true). */
+  skipIfToolSpoke?: boolean
+  /** Never auto-read subagent/delegated sessions (default true). */
+  skipSubagents?: boolean
+  /** Turn-end reasons that trigger auto-read (default ["completed", "max-tokens"]). */
+  reasons?: AutoReplyReason[]
+}
+
 /** Plugin configuration. */
 export interface Config {
   /** Microphone recording behavior. */
@@ -193,6 +219,8 @@ export interface Config {
   tts?: TtsConfig
   /** Event announcement configuration. */
   announce?: AnnounceConfig
+  /** Default auto-read of the assistant's final reply. */
+  autoReply?: AutoReplyConfig
   /** Whether starting to talk interrupts current playback (default true). */
   interrupt?: boolean
   /** Cap on the speak tool's text length in characters (default 20000). */
@@ -279,6 +307,16 @@ export interface ResolvedConfig {
   messageApproval: string
   /** Spoken phrase for errors. */
   messageError: string
+  /** Whether the assistant's final reply is read aloud automatically. */
+  autoReplyEnabled: boolean
+  /** Cap on one auto-read utterance in characters. */
+  autoReplyMaxChars: number
+  /** Skip auto-read when the turn already called the speak tool. */
+  autoReplySkipIfToolSpoke: boolean
+  /** Never auto-read subagent sessions. */
+  autoReplySkipSubagents: boolean
+  /** Turn-end reasons that trigger auto-read. */
+  autoReplyReasons: readonly AutoReplyReason[]
   /** Whether talking interrupts current playback. */
   interruptEnabled: boolean
   /** Cap on the speak tool's text length. */
@@ -352,6 +390,13 @@ export const Config: z<Config> = z.object({
       error: z.string().default('Something went wrong.'),
     }),
   }),
+  autoReply: z.object({
+    enabled: z.boolean().default(true),
+    maxChars: z.number().min(1).max(MAX_AUTO_REPLY_MAX_CHARS).default(DEFAULT_AUTO_REPLY_MAX_CHARS),
+    skipIfToolSpoke: z.boolean().default(true),
+    skipSubagents: z.boolean().default(true),
+    reasons: z.array(z.union(['completed', 'max-tokens'] as const)).default(['completed', 'max-tokens']),
+  }),
   interrupt: z.boolean().default(true),
   maxSpeakChars: z.number().min(1).max(MAX_SPEAK_CHARS).default(DEFAULT_MAX_SPEAK_CHARS),
   maxAudioCacheBytes: z.number().min(1024 * 1024).max(MAX_AUDIO_CACHE_BYTES).default(DEFAULT_MAX_AUDIO_CACHE_BYTES),
@@ -359,6 +404,7 @@ export const Config: z<Config> = z.object({
 
 const STT_ENGINES = ['auto', 'web', 'funasr', 'whisper'] as const
 const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'piper'] as const
+const AUTO_REPLY_REASONS = ['completed', 'max-tokens'] as const
 
 function isSttEngine(value: unknown): value is SttEngine {
   return typeof value === 'string' && (STT_ENGINES as readonly string[]).includes(value)
@@ -366,6 +412,10 @@ function isSttEngine(value: unknown): value is SttEngine {
 
 function isTtsEngine(value: unknown): value is TtsEngine {
   return typeof value === 'string' && (TTS_ENGINES as readonly string[]).includes(value)
+}
+
+function isAutoReplyReason(value: unknown): value is AutoReplyReason {
+  return typeof value === 'string' && (AUTO_REPLY_REASONS as readonly string[]).includes(value)
 }
 
 function stringOf(value: unknown, fallback: string, label: string): string {
@@ -395,6 +445,32 @@ function numberOf(value: unknown, fallback: number, min: number, max: number, la
 }
 
 /**
+ * Resolve the auto-read reason whitelist: at least one entry, each value from
+ * the closed vocabulary. The array is copied and frozen so a programmatic
+ * caller's later mutation cannot silently change a live controller's policy.
+ *
+ * @param value - raw `autoReply.reasons` (undefined for the default).
+ * @returns the frozen reason list.
+ */
+function autoReplyReasonsOf(value: unknown): readonly AutoReplyReason[] {
+  if (value === undefined) return DEFAULT_AUTO_REPLY_REASONS
+  if (!Array.isArray(value)) {
+    throw new TypeError('dsh-talk: config.autoReply.reasons must be an array of "completed" | "max-tokens"')
+  }
+  const reasons: AutoReplyReason[] = []
+  for (const candidate of value) {
+    if (!isAutoReplyReason(candidate)) {
+      throw new Error(`dsh-talk: config.autoReply.reasons must contain only "completed" | "max-tokens", got ${JSON.stringify(candidate)}`)
+    }
+    reasons.push(candidate)
+  }
+  if (reasons.length === 0) {
+    throw new Error('dsh-talk: config.autoReply.reasons must contain at least one reason')
+  }
+  return Object.freeze(reasons)
+}
+
+/**
  * Resolve raw config to the runtime policy, re-validating defaults and bounds.
  * Cross-field consistency (an engine that requires a model path or endpoint)
  * fails here too, so a misconfigured row is loud at load instead of failing
@@ -409,6 +485,7 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const tts = config?.tts ?? {}
   const announce = config?.announce ?? {}
   const messages = announce.messages ?? {}
+  const autoReply = config?.autoReply ?? {}
 
   const recordEnabled = booleanOf(record.enabled, true, 'record.enabled')
   const recordHotkey = nullableStringOf(record.hotkey, 'record.hotkey')
@@ -493,6 +570,12 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   const messageApproval = stringOf(messages.approval, 'Approval required.', 'announce.messages.approval')
   const messageError = stringOf(messages.error, 'Something went wrong.', 'announce.messages.error')
 
+  const autoReplyEnabled = booleanOf(autoReply.enabled, true, 'autoReply.enabled')
+  const autoReplyMaxChars = numberOf(autoReply.maxChars, DEFAULT_AUTO_REPLY_MAX_CHARS, 1, MAX_AUTO_REPLY_MAX_CHARS, 'autoReply.maxChars')
+  const autoReplySkipIfToolSpoke = booleanOf(autoReply.skipIfToolSpoke, true, 'autoReply.skipIfToolSpoke')
+  const autoReplySkipSubagents = booleanOf(autoReply.skipSubagents, true, 'autoReply.skipSubagents')
+  const autoReplyReasons = autoReplyReasonsOf(autoReply.reasons)
+
   const interruptEnabled = booleanOf(config?.interrupt, true, 'interrupt')
   const maxSpeakChars = numberOf(config?.maxSpeakChars, DEFAULT_MAX_SPEAK_CHARS, 1, MAX_SPEAK_CHARS, 'maxSpeakChars')
   const maxAudioCacheBytes = numberOf(
@@ -542,6 +625,11 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
     messageTurnEnd,
     messageApproval,
     messageError,
+    autoReplyEnabled,
+    autoReplyMaxChars,
+    autoReplySkipIfToolSpoke,
+    autoReplySkipSubagents,
+    autoReplyReasons,
     interruptEnabled,
     maxSpeakChars,
     maxAudioCacheBytes,

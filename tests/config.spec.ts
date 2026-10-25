@@ -2,16 +2,24 @@
  * Config contract: the Schemastery schema fills leaf defaults on an empty
  * input, rejects out-of-range values loudly, and `resolveConfig` re-judges
  * every default for programmatic mounts plus the cross-field engine checks.
+ * The auto-read knobs resolve into the `autoReply*` policy fields: on by
+ * default, capped at 1..100000, with at least one trigger reason.
  *
  * @module dsh-talk/test/config.spec
  */
 
 import { describe, expect, it } from 'vitest'
-import { Config, resolveConfig, MAX_RECORD_SECONDS } from '../src/config.ts'
+import { Config, resolveConfig, MAX_AUTO_REPLY_MAX_CHARS, MAX_RECORD_SECONDS } from '../src/config.ts'
 
 describe('Config schema', () => {
   it('fills every leaf default on an empty input', () => {
-    const normalized = Config({}) as { record: { enabled: boolean }; stt: { engine: string; language: string; interim: boolean; silenceFinaliseMs: number }; tts: { engine: string; rate: number }; announce: { enabled: boolean; messages: { turnEnd: string } } }
+    const normalized = Config({}) as {
+      record: { enabled: boolean }
+      stt: { engine: string; language: string; interim: boolean; silenceFinaliseMs: number }
+      tts: { engine: string; rate: number }
+      announce: { enabled: boolean; messages: { turnEnd: string } }
+      autoReply: { enabled: boolean; maxChars: number; skipIfToolSpoke: boolean; skipSubagents: boolean; reasons: string[] }
+    }
     expect(normalized.record.enabled).toBe(true)
     expect(normalized.stt.engine).toBe('auto')
     expect(normalized.stt.language).toBe('auto')
@@ -21,13 +29,27 @@ describe('Config schema', () => {
     expect(normalized.tts.rate).toBe(0)
     expect(normalized.announce.enabled).toBe(true)
     expect(normalized.announce.messages.turnEnd).toBe('Turn complete.')
+    // Auto-read is on by default: the assistant's final reply replaces the
+    // generic announcement whenever one can be read.
+    expect(normalized.autoReply.enabled).toBe(true)
+    expect(normalized.autoReply.maxChars).toBe(600)
+    expect(normalized.autoReply.skipIfToolSpoke).toBe(true)
+    expect(normalized.autoReply.skipSubagents).toBe(true)
+    expect(normalized.autoReply.reasons).toEqual(['completed', 'max-tokens'])
   })
 
   it('keeps nested defaults when only a leaf is overridden', () => {
-    const normalized = Config({ record: { autoSubmit: true } }) as { record: { autoSubmit: boolean; enabled: boolean }; stt: { interim: boolean } }
+    const normalized = Config({ record: { autoSubmit: true }, autoReply: { maxChars: 120 } }) as {
+      record: { autoSubmit: boolean; enabled: boolean }
+      stt: { interim: boolean }
+      autoReply: { enabled: boolean; maxChars: number; reasons: string[] }
+    }
     expect(normalized.record.autoSubmit).toBe(true)
     expect(normalized.record.enabled).toBe(true)
     expect(normalized.stt.interim).toBe(true)
+    expect(normalized.autoReply.maxChars).toBe(120)
+    expect(normalized.autoReply.enabled).toBe(true)
+    expect(normalized.autoReply.reasons).toEqual(['completed', 'max-tokens'])
   })
 
   it('rejects a recording cap above the ceiling', () => {
@@ -36,6 +58,12 @@ describe('Config schema', () => {
 
   it('rejects an unknown STT engine', () => {
     expect(() => Config({ stt: { engine: 'watson' as 'web' } })).toThrow()
+  })
+
+  it('rejects an auto-read cap outside 1..100000 and an unknown reason', () => {
+    expect(() => Config({ autoReply: { maxChars: MAX_AUTO_REPLY_MAX_CHARS + 1 } })).toThrow()
+    expect(() => Config({ autoReply: { maxChars: 0 } })).toThrow()
+    expect(() => Config({ autoReply: { reasons: ['sometimes' as 'completed'] } })).toThrow()
   })
 })
 
@@ -71,5 +99,32 @@ describe('resolveConfig', () => {
     expect(resolved.vadSilenceMs).toBe(1_500)
     expect(resolved.vadEnergyThreshold).toBe(0.01)
     expect(() => resolveConfig({ record: { vad: { silenceMs: 10 } } })).toThrow(/silenceMs/u)
+  })
+
+  it('resolves the auto-read defaults: enabled, 600 chars, both guards on, two reasons', () => {
+    const resolved = resolveConfig({})
+    expect(resolved.autoReplyEnabled).toBe(true)
+    expect(resolved.autoReplyMaxChars).toBe(600)
+    expect(resolved.autoReplySkipIfToolSpoke).toBe(true)
+    expect(resolved.autoReplySkipSubagents).toBe(true)
+    expect(resolved.autoReplyReasons).toEqual(['completed', 'max-tokens'])
+  })
+
+  it('resolves explicit auto-read overrides, including a narrowed reason list', () => {
+    const resolved = resolveConfig({
+      autoReply: { enabled: false, maxChars: 120, skipIfToolSpoke: false, skipSubagents: false, reasons: ['max-tokens'] },
+    })
+    expect(resolved.autoReplyEnabled).toBe(false)
+    expect(resolved.autoReplyMaxChars).toBe(120)
+    expect(resolved.autoReplySkipIfToolSpoke).toBe(false)
+    expect(resolved.autoReplySkipSubagents).toBe(false)
+    expect(resolved.autoReplyReasons).toEqual(['max-tokens'])
+  })
+
+  it('re-validates the auto-read bounds and rejects an empty or unknown reason list', () => {
+    expect(() => resolveConfig({ autoReply: { maxChars: 0 } })).toThrow(/autoReply\.maxChars/u)
+    expect(() => resolveConfig({ autoReply: { maxChars: MAX_AUTO_REPLY_MAX_CHARS + 1 } })).toThrow(/autoReply\.maxChars/u)
+    expect(() => resolveConfig({ autoReply: { reasons: [] } })).toThrow(/at least one reason/u)
+    expect(() => resolveConfig({ autoReply: { reasons: ['sometimes' as 'completed'] } })).toThrow(/autoReply\.reasons/u)
   })
 })

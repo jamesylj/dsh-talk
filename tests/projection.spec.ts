@@ -47,6 +47,31 @@ function browserSpeechEvent(seq: number, utteranceId: string) {
   } as unknown as SessionEvent
 }
 
+function pluginRecordEvent(seq: number, utteranceId: string, data?: Record<string, unknown>) {
+  return {
+    seq,
+    type: 'plugin:dsh-talk/speech',
+    ignorable: true,
+    data: data ?? {
+      kind: 'tts',
+      utteranceId,
+      engine: 'edge-tts',
+      text: 'Auto-replied.',
+      audioBytes: 24,
+      reason: 'auto-reply',
+    },
+  } as unknown as SessionEvent
+}
+
+function malformedPluginRecordEvent(seq: number) {
+  return {
+    seq,
+    type: 'plugin:dsh-talk/speech',
+    ignorable: true,
+    data: { kind: 'tts', utteranceId: 42, engine: 'edge-tts', text: 'nope', audioBytes: 'x', reason: 'auto-reply' },
+  } as unknown as SessionEvent
+}
+
 describe('talk:speech projection', () => {
   it('starts at null', () => {
     expect(initTalkSpeechProjection()).toBeNull()
@@ -88,5 +113,24 @@ describe('talk:speech projection', () => {
     expect(talkSpeechProjectionSchema.safeParse({ nope: 1 }).success).toBe(false)
     expect(talkSpeechProjectionSchema.safeParse({ ...value, rate: 0.05 }).success).toBe(false)
     expect(talkSpeechProjectionSchema.safeParse({ ...value, pitch: 2.5 }).success).toBe(false)
+  })
+
+  it('folds an ignorable plugin record (0.2.1+ transport) and the auto-reply reason', () => {
+    const state = applyTalkSpeechProjection(initTalkSpeechProjection(), pluginRecordEvent(6, 'u-record'))
+    expect(state?.utteranceId).toBe('u-record')
+    expect(state?.reason).toBe('auto-reply')
+    expect(talkSpeechProjectionSchema.safeParse(state).success).toBe(true)
+  })
+
+  it('ignores a restored plugin record whose payload is not a valid speech event', () => {
+    const state = applyTalkSpeechProjection(initTalkSpeechProjection(), pluginRecordEvent(7, 'u-good'))
+    const after = applyTalkSpeechProjection(state, malformedPluginRecordEvent(8))
+    expect(after).toBe(state)
+  })
+
+  it('keeps the pre-existing plugin record when a plain event follows it', () => {
+    let state = applyTalkSpeechProjection(initTalkSpeechProjection(), pluginRecordEvent(9, 'u-record'))
+    state = applyTalkSpeechProjection(state, speechEvent(10, 'u-plain'))
+    expect(state?.utteranceId).toBe('u-plain')
   })
 })

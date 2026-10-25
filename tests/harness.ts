@@ -16,7 +16,7 @@ import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
-import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, type Session, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
 import {
   SubprocessRuntime,
   type SubprocessCollectedOutputs,
@@ -76,6 +76,9 @@ export class FakeSubprocessRuntime extends SubprocessRuntime {
     }
     const outcome: SubprocessOutcome = { exitCode, signal: null }
     const handle = {
+      // A successfully scripted spawn; the newer host line types the tree root
+      // pid on the handle, the pinned 0.2.1 peer does not (extra field, harmless).
+      pid: 1,
       stdin: undefined,
       stdout: undefined,
       stderr: undefined,
@@ -148,10 +151,11 @@ function withTemporaryExportDir(config: Record<string, unknown>): { config: Reco
 
 /**
  * Run `body` with `dsh-talk/speech` deliberately marked as a known host
- * vocabulary entry, restoring the previous state afterwards. The installed
- * peers do NOT know out-of-repo event types, so the gate legitimately skips
- * every speech append by default; only a spec that is explicitly about the
- * appended payload shape should opt in through this helper.
+ * vocabulary entry, restoring the previous state afterwards. Legacy hosts
+ * appended the plain event; the installed 0.2.1 peer instead publishes the
+ * `appendPluginRecord` API, so the default channel is the ignorable
+ * `plugin:dsh-talk/speech` record and this helper opts a spec into the plain
+ * `dsh-talk/speech` vocabulary branch.
  * @param body - the assertions to run with the vocabulary known.
  */
 export async function withKnownSpeechVocabulary(body: () => Promise<void> | void): Promise<void> {
@@ -165,6 +169,71 @@ export async function withKnownSpeechVocabulary(body: () => Promise<void> | void
   }
 }
 
+/** Every session-log event type that can carry one speech payload. */
+export const SPEECH_EVENT_TYPES = ['dsh-talk/speech', 'plugin:dsh-talk/speech'] as const
+
+/**
+ * Collect every speech-bearing event of one session, whichever channel the
+ * host carries: the plain `dsh-talk/speech` event on a legacy vocabulary host
+ * (or under {@link withKnownSpeechVocabulary}), or the ignorable
+ * `plugin:dsh-talk/speech` record the 0.2.1+ API publishes by default.
+ *
+ * @param session - the session to scan.
+ * @returns the speech events in log order (empty when none was carried).
+ */
+export function speechEventsOf(session: Session): SessionEvent[] {
+  return session.snapshotEvents().filter(event => (SPEECH_EVENT_TYPES as readonly string[]).includes(String(event.type)))
+}
+
+/**
+ * Append one committed assistant message with a single `text` block — the
+ * auto-read input the agent loop writes for a completed step.
+ *
+ * @param session - the session to append to.
+ * @param turn - the turn the message belongs to.
+ * @param text - the model's reply text.
+ * @param options - optional stable message id (the auto-read dedupe key) and step number.
+ * @returns the assistant message id that went into the log.
+ */
+export function appendAssistantMessage(
+  session: Session,
+  turn: number,
+  text: string,
+  options: { messageId?: string; step?: number } = {},
+): string {
+  const messageId = options.messageId ?? `assistant-${session.seq}`
+  const data = {
+    turn,
+    step: options.step ?? 1,
+    message: {
+      // The MessageId brand is type-only; a raw harness id is valid at runtime.
+      id: messageId as never,
+      role: 'assistant',
+      content: [{ type: 'text', text }],
+      source: { kind: 'model', provider: 'harness', model: 'harness' },
+    },
+    // `stream` is required by the 0.2.1 event contract and absent from the
+    // older type face; the runtime accepts either, so the dual-typecheck build
+    // appends the 0.2.1 shape through a widened payload.
+    stream: [],
+  }
+  session.append('assistant/message', data as never, { surfaceOp: 'append' })
+  return messageId
+}
+
+/**
+ * Close one turn with the given end reason (default `completed`). The agent
+ * loop commits this before the running → idle phase change, which is exactly
+ * what the auto-read controller scans for.
+ *
+ * @param session - the session to append to.
+ * @param turn - the turn to close.
+ * @param reason - the end reason; defaults to `{ kind: "completed" }`.
+ */
+export function appendTurnEnd(session: Session, turn: number, reason: TurnEndReason = { kind: 'completed' }): void {
+  session.append('turn/end', { turn, reason })
+}
+
 /**
  * Mount real session/tools/projection services, the scripted subprocess, and
  * this plugin; open one turn so agent-scoped flows work.
@@ -175,11 +244,11 @@ export async function withKnownSpeechVocabulary(body: () => Promise<void> | void
 export async function mountHarness(config: Record<string, unknown> = {}): Promise<Harness> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
-  // The installed peers do not know out-of-repo plugin event types, so the
-  // gate correctly SKIPS every speech append here — the integration specs
-  // assert that degradation and the outcome table that records it. A spec
-  // about the appended payload opts in explicitly through
-  // `withKnownSpeechVocabulary`.
+  // The installed 0.2.1 peer does not know the out-of-repo event type, so the
+  // gate appends every utterance as an ignorable `plugin:dsh-talk/speech`
+  // record instead (see `src/speech.ts`); integration specs collect both
+  // channels through `speechEventsOf`, and a spec about the plain-vocabulary
+  // branch opts in through `withKnownSpeechVocabulary`.
   const session = ctx.sessions.create(SessionId('dsh-talk-harness'))
   session.append('turn/start', { turn: 1 })
   ctx.provide('systemPrompt', { tools: () => () => undefined, section: () => () => undefined } as never)

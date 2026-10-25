@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { mountHarness, SessionId, withKnownSpeechVocabulary } from './harness.ts'
+import { mountHarness, SessionId, speechEventsOf, withKnownSpeechVocabulary } from './harness.ts'
 
 const BROWSER = { tts: { engine: 'browser' } }
 
@@ -53,28 +53,36 @@ describe('talk/latest', () => {
     expect(harness.service.latest(String(second.id))?.text).toBe('second session utterance')
   })
 
-  it('reports the log gate per session: skipped by default, appended once the vocabulary is known', async () => {
+  it('reports the log gate per session: the plugin record by default, the plain event once the vocabulary is known', async () => {
     const harness = await mountHarness(BROWSER)
     const other = harness.ctx.sessions.create(SessionId('dsh-talk-third'))
 
-    await harness.service.speak('unloggable', { reason: 'speak-tool', session: harness.session })
-    const skipped = harness.service.latest(String(harness.session.id))
-    expect(skipped).toMatchObject({ logged: false, appended: 0, skipped: 1 })
-    expect(skipped?.engine).toBe('browser')
-    expect(skipped?.audioBytes).toBe(0)
+    await harness.service.speak('loggable', { reason: 'speak-tool', session: harness.session })
+    const record = harness.service.latest(String(harness.session.id))
+    // This host publishes `appendPluginRecord`: the utterance lands as an
+    // ignorable plugin record and still counts as logged, never skipped.
+    expect(record).toMatchObject({ logged: true, appended: 1, skipped: 0 })
+    expect(record?.engine).toBe('browser')
+    expect(record?.audioBytes).toBe(0)
+    expect(speechEventsOf(harness.session).map(event => event.type)).toEqual(['plugin:dsh-talk/speech'])
     // A session with no attempt of its own reports nothing at all.
     expect(harness.service.latest(String(other.id))).toBeNull()
 
     await withKnownSpeechVocabulary(async () => {
-      await harness.service.speak('loggable', { reason: 'error', session: harness.session })
+      await harness.service.speak('plain event', { reason: 'error', session: harness.session })
     })
     expect(harness.service.latest(String(harness.session.id))).toMatchObject({
-      text: 'loggable',
+      text: 'plain event',
       reason: 'error',
       logged: true,
-      appended: 1,
-      skipped: 1,
+      appended: 2,
+      skipped: 0,
     })
+    // The plain-vocabulary branch wrote the legacy event type in addition.
+    expect(speechEventsOf(harness.session).map(event => event.type)).toEqual([
+      'plugin:dsh-talk/speech',
+      'dsh-talk/speech',
+    ])
     // Still keyed away from the untouched session.
     expect(harness.service.latest(String(other.id))).toBeNull()
   })

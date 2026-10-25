@@ -11,11 +11,23 @@
 
 import { z } from 'zod'
 
-/** What triggered one spoken utterance. */
-export type SpeechReason = 'speak-tool' | 'turn-end' | 'approval' | 'error'
+/** What triggered one spoken utterance. `auto-reply` reads the assistant's final reply of a completed turn. */
+export type SpeechReason = 'speak-tool' | 'turn-end' | 'approval' | 'error' | 'auto-reply'
 
 /** Engines that can synthesize speech in this plugin. */
 export type SpeechTtsEngine = 'browser' | 'edge-tts' | 'piper'
+
+/** Every reason that can ride a speech payload (shared by the projection and the wire schemas). */
+export const SPEECH_REASON_SCHEMA = z.union([
+  z.literal('speak-tool'),
+  z.literal('turn-end'),
+  z.literal('approval'),
+  z.literal('error'),
+  z.literal('auto-reply'),
+])
+
+/** Every engine that can ride a speech payload. */
+export const SPEECH_TTS_ENGINE_SCHEMA = z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('piper')])
 
 /** Payload of one `dsh-talk/speech` session event. */
 export interface DshTalkSpeechEvent {
@@ -69,14 +81,35 @@ export interface TalkSpeechProjection {
   pitch?: number | undefined
 }
 
+/**
+ * Strict schema for one speech payload. Two sources feed it: the plain
+ * `dsh-talk/speech` event (typed in-repo) and a restored `plugin:dsh-talk/speech`
+ * record whose `data` is arbitrary JSON written by an earlier build of this
+ * plugin — the record's owner validates it before use. Fields are checked
+ * rather than trusted so a corrupt record can never reach the projection wire.
+ */
+export const talkSpeechEventPayloadSchema = z.object({
+  kind: z.literal('tts'),
+  utteranceId: z.string(),
+  engine: SPEECH_TTS_ENGINE_SCHEMA,
+  text: z.string(),
+  audioBytes: z.number().int(),
+  reason: SPEECH_REASON_SCHEMA,
+  error: z.string().optional(),
+  interrupted: z.boolean().optional(),
+  voice: z.string().optional(),
+  rate: z.number().min(0.1).max(10).optional(),
+  pitch: z.number().min(0).max(2).optional(),
+})
+
 /** Strict schema validating the projection value before it leaves the host. */
 export const talkSpeechProjectionSchema = z.object({
   seq: z.number().int(),
   utteranceId: z.string(),
-  engine: z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('piper')]),
+  engine: SPEECH_TTS_ENGINE_SCHEMA,
   text: z.string(),
   audioBytes: z.number().int(),
-  reason: z.union([z.literal('speak-tool'), z.literal('turn-end'), z.literal('approval'), z.literal('error')]),
+  reason: SPEECH_REASON_SCHEMA,
   error: z.string().optional(),
   interrupted: z.boolean().optional(),
   voice: z.string().optional(),

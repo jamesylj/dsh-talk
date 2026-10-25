@@ -5,7 +5,9 @@
  * + settings write-back), registers the `speak` tool, registers the
  * `talk:speech` session-projection unit the web client plays utterances
  * from, and speaks event announcements:
- * - `agent/status` → `idle` after a `running` observation: turn complete.
+ * - `agent/status` → `idle` after a `running` observation: read the just-
+ *   finished turn's final assistant reply aloud (auto-read) when it qualifies,
+ *   otherwise announce the generic turn completion.
  * - `agent/error`: a turn errored.
  * - `approval/request` (waterfall): an approval is pending — the listener
  *   announces without blocking and always calls `next()`.
@@ -22,6 +24,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import { AutoReplyController } from './auto-reply.ts'
 import { Config, resolveConfig } from './config.ts'
 import {
   applyTalkSpeechProjection,
@@ -39,9 +42,24 @@ export const name = 'talk'
 export const inject = ['tools', 'subprocess']
 
 // Service Definition — public contract: the talk service face, the speak tool, and the wire vocabularies.
-export { Config, resolveConfig, type Config as TalkConfig, type ResolvedConfig } from './config.ts'
+export { Config, resolveConfig, type AutoReplyConfig, type AutoReplyReason, type Config as TalkConfig, type ResolvedConfig } from './config.ts'
 export { TalkService, resolveSttEngine, resolveTtsEngine, type SpeakOptions, type SpeakOutcome } from './service.ts'
 export { speakTool, renderSpeak } from './tool.ts'
+export {
+  AutoReplyController,
+  SPEAK_TOOL_NAME,
+  findAutoReply,
+  isSubagentSession,
+  prepareAutoReplyText,
+  stripCodeBlocks,
+  truncateAtWhitespace,
+  type AutoReplyFinding,
+  type AutoReplyPolicy,
+  type AutoReplyReply,
+  type AutoReplySpeak,
+  type AutoReplySpeakOptions,
+  type AutoReplyToolSpoke,
+} from './auto-reply.ts'
 export { sanitizeText, redactSecrets, displayPath } from './sanitize.ts'
 export { edgeTtsArgv, piperSpec, whisperArgv, runCommand, synthesize, transcribeWhisper, transcribeFunasr, EngineFailure } from './engine.ts'
 export {
@@ -117,7 +135,22 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   })
 
   // Consumer — the announcement listeners drive the talk service from host events.
-  // Turn-completion announcement: idle after an observed running transition.
+  // Turn-completion: the `agent/status` running → idle transition is the trigger
+  // (a normal Cordis broadcast, unlike the ancestor-only `session/event`). At
+  // idle the whole turn is committed, so auto-read scans the log for the final
+  // reply and, when it reads one, suppresses the generic announcement: reading
+  // the reply IS the turn-end notification. A disabled or non-qualifying turn
+  // falls through to the existing "Turn complete." path unchanged.
+  const autoReply = new AutoReplyController(
+    {
+      enabled: resolved.autoReplyEnabled,
+      maxChars: resolved.autoReplyMaxChars,
+      skipIfToolSpoke: resolved.autoReplySkipIfToolSpoke,
+      skipSubagents: resolved.autoReplySkipSubagents,
+      reasons: resolved.autoReplyReasons,
+    },
+    (text, options) => service.speak(text, options),
+  )
   const runningAgents = new Set<Agent>()
   ctx.on('agent/status', ({ agent, status }) => {
     if (status === 'running') {
@@ -125,6 +158,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       return
     }
     if (!runningAgents.delete(agent)) return
+    if (autoReply.handle(agent.session)) return
     if (!resolved.announceEnabled || !resolved.announceOnTurnEnd) return
     void service.speak(resolved.messageTurnEnd, { reason: 'turn-end', session: agent.session })
   })

@@ -106,6 +106,24 @@
             turnEnd: Turn complete.
             approval: Approval required.
             error: Something went wrong.
+        # Default auto-read: speak the assistant's final reply when a turn ends
+        # (the generic turn-end announcement is then suppressed — the reply IS
+        # the notification; error/aborted/blocked turns still fall back to it).
+        autoReply:
+          # Read the assistant's final reply aloud (default true).
+          enabled: true
+          # Cap on one spoken reply in characters (1..100000); longer replies
+          # truncate at a word boundary (default 600).
+          maxChars: 600
+          # Skip auto-read when the same turn already called the speak tool,
+          # so one reply is never read twice (default true).
+          skipIfToolSpoke: true
+          # Never auto-read subagent/delegated sessions (default true).
+          skipSubagents: true
+          # Turn-end reasons that trigger auto-read: completed | max-tokens.
+          reasons:
+            - completed
+            - max-tokens
         # Starting to talk interrupts current playback.
         interrupt: true
         # Cap on the speak tool's text length in characters (1..100000).

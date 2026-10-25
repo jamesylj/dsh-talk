@@ -12,6 +12,7 @@
 
 import { z } from 'zod'
 import type { InvocationDescriptor } from '@deepseek-ai/dsh-typert-protocol'
+import { SPEECH_REASON_SCHEMA } from './vocabulary.ts'
 import type { SpeechReason, SpeechTtsEngine } from './vocabulary.ts'
 
 /**
@@ -271,7 +272,7 @@ export const TALK_LATEST_SCHEMA = z.object({
   engine: z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('piper')]),
   text: z.string(),
   audioBytes: z.number().int(),
-  reason: z.union([z.literal('speak-tool'), z.literal('turn-end'), z.literal('approval'), z.literal('error')]),
+  reason: SPEECH_REASON_SCHEMA,
   logged: z.boolean(),
   appended: z.number().int(),
   skipped: z.number().int(),

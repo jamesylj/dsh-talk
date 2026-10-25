@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { mountHarness, withKnownSpeechVocabulary, type Harness } from './harness.ts'
+import { mountHarness, speechEventsOf, withKnownSpeechVocabulary, type Harness } from './harness.ts'
 
 let callCounter = 0
 
@@ -44,7 +44,7 @@ describe('speak tool', () => {
     expect(result.isError).toBe(true)
   })
 
-  it('speaks through the browser engine without subprocess I/O and records the log degradation', async () => {
+  it('speaks through the browser engine without subprocess I/O and appends the plugin record', async () => {
     const harness = await mountHarness()
     const result = await callTool(harness, { text: 'hello', engine: 'browser' })
     expect(result.isError).toBe(false)
@@ -53,15 +53,16 @@ describe('speak tool', () => {
     expect(value.spoken).toBe(true)
     expect(value.engine).toBe('browser')
     expect(value.audioBytes).toBe(0)
-    // This host's vocabulary excludes the out-of-repo speech type: the gate
-    // skips the append, and the skip is recorded per session instead of being
-    // dropped silently. The `speak` tool result stays the model-visible record.
-    const speech = harness.session.snapshotEvents().filter(event => event.type === 'dsh-talk/speech')
-    expect(speech).toHaveLength(0)
-    expect(harness.service.speechLogOutcome(String(harness.session.id))).toMatchObject({ appended: 0, skipped: 1 })
+    // This host's vocabulary excludes the out-of-repo speech type, so the gate
+    // appends the utterance as an ignorable plugin record — logged, not
+    // skipped. The `speak` tool result stays the model-visible record.
+    const speech = speechEventsOf(harness.session)
+    expect(speech).toHaveLength(1)
+    expect(speech[0]?.type).toBe('plugin:dsh-talk/speech')
+    expect(harness.service.speechLogOutcome(String(harness.session.id))).toMatchObject({ appended: 1, skipped: 0 })
   })
 
-  it('appends the speech event and reports it when the host vocabulary covers it (explicit opt-in)', async () => {
+  it('appends the plain speech event when the host vocabulary covers it (explicit opt-in)', async () => {
     await withKnownSpeechVocabulary(async () => {
       const harness = await mountHarness()
       await callTool(harness, { text: 'hello', engine: 'browser' })
