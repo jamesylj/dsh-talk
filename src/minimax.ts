@@ -253,11 +253,15 @@ function stderrTail(handle: SubprocessHandle): string {
 /** Write one chunk to a child's stdin, honoring backpressure and write errors. */
 function writeChunk(stream: Writable, chunk: Uint8Array): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (stream.destroyed) {
-      reject(new Error('the player closed its input'))
+    if (stream.destroyed || stream.writableEnded) {
+      reject(new Error('the player is no longer accepting audio'))
       return
     }
-    stream.write(chunk, error => (error === null || error === undefined ? resolve() : reject(error)))
+    try {
+      stream.write(chunk, error => (error === null || error === undefined ? resolve() : reject(error)))
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)))
+    }
   })
 }
 
@@ -381,16 +385,30 @@ export class MinimaxEngine {
       handle.terminate()
       throw this.failure(`${player} was spawned without a writable stdin`, signal)
     }
+    // A player that dies mid-stream makes the pending stdin writes fail with
+    // EPIPE. Without a listener that error is emitted as an uncaught exception
+    // and takes the whole host down (observed as `dsh: fatal uncaught
+    // exception: Error: write EPIPE`), so consume it here and let writeChunk
+    // report it as a normal engine failure instead.
+    let stdinError: Error | null = null
+    stdin.on('error', (error: Error) => {
+      stdinError ??= error
+    })
     let audioSec = 0
     try {
       for (const batch of batches) {
         if (signal.aborted) throw this.interruption(signal)
         audioSec += await this.collectBatch(batch, voiceId, apiKey, signal, async chunk => {
+          if (stdinError !== null) throw this.failure(`player stdin failed: ${stdinError.message}`, signal)
           await onAudio(chunk)
           await writeChunk(stdin, chunk)
         })
       }
-      stdin.end()
+      try {
+        if (!stdin.writableEnded && !stdin.destroyed) stdin.end()
+      } catch {
+        // The player already exited; `handle.done` below owns the outcome.
+      }
       const outcome = await handle.done.catch(() => null)
       if (signal.aborted) throw this.interruption(signal)
       if (outcome === null || outcome.exitCode !== 0) {
@@ -420,8 +438,26 @@ export class MinimaxEngine {
     signal: AbortSignal,
     onAudio: (chunk: Uint8Array) => Promise<void>,
   ): Promise<number> {
-    const timeout = AbortSignal.timeout(this.resolved.minimaxRequestTimeoutMs)
-    const combined = AbortSignal.any([signal, timeout])
+    // The request timeout is an IDLE budget, not a total one: a long reply is
+    // fed into realtime playback, so the player's backpressure can spread one
+    // SSE read over several minutes while data is still flowing. Every network
+    // read and every completed player write resets the clock; only a genuine
+    // stall (no progress for the whole budget) fails the utterance.
+    const idleMs = this.resolved.minimaxRequestTimeoutMs
+    const idle = new AbortController()
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const bump = (): void => {
+      if (idleTimer !== undefined) clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => idle.abort(), idleMs)
+    }
+    bump()
+    const combined = AbortSignal.any([signal, idle.signal])
+    /** Classify one failure raised while the idle clock was running. */
+    const classify = (error: unknown): EngineFailure => {
+      if (signal.aborted) return this.interruption(signal)
+      if (idle.signal.aborted) return this.failure(`stream stalled for ${Math.round(idleMs / 1000)}s`, signal)
+      return this.failure(error instanceof Error ? error.message : String(error), signal)
+    }
     const body = JSON.stringify(minimaxRequestBody(this.resolved, text, voiceId, true))
     let response: Response
     try {
@@ -435,10 +471,10 @@ export class MinimaxEngine {
         signal: combined,
       })
     } catch (error) {
-      if (signal.aborted) throw this.interruption(signal)
-      const detail = timeout.aborted ? 'request timed out' : error instanceof Error ? error.message : String(error)
-      throw this.failure(detail, signal)
+      if (idleTimer !== undefined) clearTimeout(idleTimer)
+      throw classify(error)
     }
+    bump()
     if (!response.ok) {
       const detail = await response.text().catch(() => '')
       throw this.failure(`HTTP ${response.status}${detail === '' ? '' : `: ${detail}`}`, signal)
@@ -454,6 +490,7 @@ export class MinimaxEngine {
     try {
       for (;;) {
         const { value, done } = await reader.read()
+        bump()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
         if (buffer.length > MINIMAX_MAX_SSE_LINE && !buffer.includes('\n')) {
@@ -476,6 +513,9 @@ export class MinimaxEngine {
               else {
                 sawChunk = true
                 await onAudio(event.audio)
+                // A completed player write is progress too: backpressure from
+                // realtime playback must never look like a stalled network.
+                bump()
               }
             }
             if (event.audioLengthMs !== null) seconds += event.audioLengthMs / 1000
@@ -491,8 +531,9 @@ export class MinimaxEngine {
       }
     } catch (error) {
       if (error instanceof EngineFailure) throw error
-      throw this.failure(error instanceof Error ? error.message : String(error), signal)
+      throw classify(error)
     } finally {
+      if (idleTimer !== undefined) clearTimeout(idleTimer)
       reader.releaseLock()
     }
     if (!sawChunk && finalAudio !== null) await onAudio(finalAudio)

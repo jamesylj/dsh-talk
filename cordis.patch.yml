@@ -149,7 +149,7 @@
             sampleRate: 32000
             # Characters per API request; longer text splits at sentence boundaries (500..10000).
             batchChars: 2000
-            # Per-request timeout in milliseconds (5000..600000).
+            # Idle timeout in milliseconds: no network read or player write for this long fails the utterance (5000..600000).
             requestTimeoutMs: 120000
           # Exported audio files: every locally synthesized utterance is also
           # written to a file whose absolute path the speak tool returns as

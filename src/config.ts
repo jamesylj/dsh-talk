@@ -281,7 +281,7 @@ export interface TtsMinimaxConfig {
   sampleRate?: number
   /** Characters per API request; longer text is split at sentence boundaries (default 2000, 500..10000). */
   batchChars?: number
-  /** Per-request timeout in milliseconds (default 120000). */
+  /** Idle timeout in milliseconds: no network read or player write for this long fails the utterance (default 120000). */
   requestTimeoutMs?: number
 }
 
@@ -503,7 +503,7 @@ export interface ResolvedConfig {
   minimaxSampleRate: number
   /** Characters per MiniMax API request. */
   minimaxBatchChars: number
-  /** Per-request MiniMax timeout in milliseconds. */
+  /** Idle timeout in milliseconds for one MiniMax batch (reset by reads and player writes). */
   minimaxRequestTimeoutMs: number
   /** piper executable. */
   piperCommand: string

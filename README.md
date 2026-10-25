@@ -213,7 +213,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). `cord
 | `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | Synchronous T2A endpoint, model id (`speech-2.8-turbo` or `speech-2.8-hd`), and system voice id |
 | `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(none)* / `Chinese` / `32000` | Optional emotion (`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`), language boost, and output sample rate in Hz |
 | `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | Player that reads the SSE MP3 from stdin while it is generated; set `streaming: false` to buffer the whole utterance and play it with afplay instead |
-| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | Characters per API request (longer text splits at sentence boundaries) and per-request timeout in milliseconds (5000..600000) |
+| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | Characters per API request (longer text splits at sentence boundaries) and the idle timeout in milliseconds (reset by every incoming audio chunk and player write; 5000..600000) |
 | `tts.rate` | `0` | Rate offset in percent (-50..50) for edge-tts/piper; also scales the macOS `say` rate |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` executable (local and offline; the `macos` engine only exists on macOS) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Installed voice name exactly as `say -v '?'` lists it; an unknown name is rejected instead of silently using the system default |

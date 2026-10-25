@@ -212,7 +212,7 @@ Error: dsh-talk: speak text must not be empty
 | `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | 同步 T2A 接口、模型 ID（`speech-2.8-turbo` 或 `speech-2.8-hd`）与系统音色 ID |
 | `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(无)* / `Chinese` / `32000` | 可选情绪（`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`）、语言增强、输出采样率（Hz） |
 | `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | 从 stdin 读取 SSE MP3 并边生成边播放；设为 `streaming: false` 时先缓冲整段、再用 afplay 播放 |
-| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | 每次 API 请求的字符数（超长文本按句切分）与单次请求超时（毫秒，5000..600000） |
+| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | 每次 API 请求的字符数（超长文本按句切分）与空闲超时（毫秒，收到音频或播放写入时重置；5000..600000） |
 | `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50）；同时按百分比缩放 macOS `say` 的语速 |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` 可执行文件（本地离线；`macos` 引擎仅 macOS 可用） |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | 已安装语音名，须与 `say -v '?'` 列出的完全一致；未知名称会被拒绝，而不是静默改用系统默认语音 |

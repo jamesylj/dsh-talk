@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2] - 2026-10-25
+
+### Fixed
+
+- **Long MiniMax reads are no longer cut off by the request timeout.** The per-request deadline was a total 120 s budget, but MiniMax playback is throttled by the realtime player's backpressure, so a reply longer than roughly two minutes aborted mid-stream with `minimax: The operation was aborted due to timeout` (a 6,846-character auto-read in the session log hit exactly this and fell back to the browser voice). `tts.minimax.requestTimeoutMs` is now an **idle** budget: every SSE read and every completed player write resets it, so only a genuine stall (no progress for the whole budget) fails the utterance.
+- **A player that dies mid-stream can no longer crash the host.** If `ffplay` exits while audio is still being written, the pending stdin writes fail with EPIPE; that error event was unhandled and became an uncaught exception (`dsh: fatal uncaught exception: Error: write EPIPE`, host exited with 1 — see `~/Library/Logs/DeepSeek Harness/crash-*.log`). The engine now consumes stdin errors and reports them as a normal engine failure, so speech falls back cleanly instead of killing the host.
+
 ## [0.4.1] - 2026-10-25
 
 ### Added

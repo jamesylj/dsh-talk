@@ -8,9 +8,12 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { Writable } from 'node:stream'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveConfig } from '../src/config.ts'
+import { EngineFailure } from '../src/engine.ts'
 import {
+  MinimaxEngine,
   minimaxRequestBody,
   parseCredentialRefs,
   parseMinimaxSseLine,
@@ -24,7 +27,53 @@ const savedEnv = process.env[ENV_NAME]
 afterEach(() => {
   if (savedEnv === undefined) delete process.env[ENV_NAME]
   else process.env[ENV_NAME] = savedEnv
+  vi.unstubAllGlobals()
 })
+
+/** Minimal player process: a writable stdin sink and an exit promise. */
+function fakePlayer(options: {
+  onWrite?: (chunk: Buffer, done: (error?: Error) => void) => void
+  exit?: { code: number | null; signal: NodeJS.Signals | null }
+  exitNow?: boolean
+} = {}) {
+  const stdin = new Writable({
+    write(chunk: Buffer, _encoding, done) {
+      options.onWrite?.(chunk, done)
+      if (options.onWrite === undefined) done()
+    },
+  })
+  const done = options.exitNow === true
+    ? Promise.resolve(options.exit ?? { exitCode: 1, signal: null })
+    : new Promise(resolve => stdin.on('finish', () => resolve(options.exit ?? { exitCode: 0, signal: null })))
+  const handle = {
+    stdin,
+    stdout: undefined,
+    stderr: undefined,
+    control: undefined,
+    collected: {},
+    done,
+    terminate: (): void => { if (!stdin.destroyed) stdin.destroy() },
+    waitForExit: async () => true,
+  }
+  return { spawn: () => handle, resolveExecutable: async (command: string) => command, stdin }
+}
+
+/** SSE response body with one audio chunk, wired to the fetch abort signal. */
+function sseResponse(init: RequestInit | undefined): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"data":{"status":1,"audio":"00ff"},"base_resp":{"status_code":0,"status_msg":""}}\n'))
+      init?.signal?.addEventListener('abort', () => {
+        try {
+          controller.error(new DOMException('The operation was aborted', 'AbortError'))
+        } catch {
+          // Already closed.
+        }
+      }, { once: true })
+    },
+  })
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+}
 
 describe('splitMinimaxText', () => {
   it('keeps short text in one batch', () => {
@@ -184,3 +233,88 @@ describe('minimax config', () => {
     expect(() => resolveConfig({ tts: { minimax: { apiKeyEnv: 'not a shell name' } } })).toThrow(/apiKeyEnv/u)
   })
 })
+
+describe('MinimaxEngine resilience', () => {
+  it('fails as an idle-stall instead of hanging forever on a silent stream', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => sseSilentResponse(init)))
+    const base = resolveConfig({})
+    const resolved = { ...base, minimaxRequestTimeoutMs: 400 }
+    const fake = fakePlayer()
+    const engine = new MinimaxEngine(fake as never, resolved)
+    const started = Date.now()
+    const error = await engine.synthesize('你好', undefined, new AbortController().signal).then(() => null, (caught: unknown) => caught)
+    expect(error).toBeInstanceOf(EngineFailure)
+    expect((error as EngineFailure).aborted).toBe(false)
+    expect((error as EngineFailure).message).toMatch(/stalled/u)
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  it('turns a dead player stdin (EPIPE) into an engine failure instead of an uncaught error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => sseResponse(init)))
+    const fake = fakePlayer({
+      onWrite: (_chunk, done) => done(new Error('write EPIPE')),
+      exitNow: true,
+      exit: { code: 1, signal: null },
+    })
+    const engine = new MinimaxEngine(fake as never, resolveConfig({}))
+    const error = await engine.synthesize('你好', undefined, new AbortController().signal).then(() => null, (caught: unknown) => caught)
+    expect(error).toBeInstanceOf(EngineFailure)
+    expect((error as EngineFailure).aborted).toBe(false)
+    expect((error as EngineFailure).message).toMatch(/EPIPE|player/u)
+  })
+})
+
+/** A 200 SSE response whose body never produces bytes (only aborts with the fetch signal). */
+function sseSilentResponse(init: RequestInit | undefined): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      init?.signal?.addEventListener('abort', () => {
+        try {
+          controller.error(new DOMException('The operation was aborted', 'AbortError'))
+        } catch {
+          // Already closed.
+        }
+      }, { once: true })
+    },
+  })
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+describe('MinimaxEngine backpressure', () => {
+  it('keeps a slow realtime player streaming past the idle budget in total time', async () => {
+    const chunkCount = 6
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => sseManyChunksResponse(init, chunkCount)))
+    const base = resolveConfig({})
+    // Each write waits 150 ms (well under the budget); the whole batch takes
+    // 900 ms, which is LONGER than the 400 ms idle budget — only per-progress
+    // resets make this pass.
+    const resolved = { ...base, minimaxRequestTimeoutMs: 400 }
+    const fake = fakePlayer({
+      onWrite: (_chunk, done) => setTimeout(done, 150),
+    })
+    const engine = new MinimaxEngine(fake as never, resolved)
+    const result = await engine.synthesize('你好', undefined, new AbortController().signal)
+    expect(result.data.byteLength).toBe(chunkCount * 2)
+  }, 10_000)
+})
+
+/** SSE response with N audio chunks followed by a final summary event. */
+function sseManyChunksResponse(init: RequestInit | undefined, count: number): Response {
+  const encoder = new TextEncoder()
+  let sent = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent < count) {
+        controller.enqueue(encoder.encode(`data: {"data":{"status":1,"audio":"00ff"},"base_resp":{"status_code":0,"status_msg":""}}\n`))
+        sent += 1
+        return
+      }
+      controller.enqueue(encoder.encode('data: {"data":{"status":2,"audio":""},"extra_info":{"audio_length":1000},"base_resp":{"status_code":0,"status_msg":"success"}}\n'))
+      controller.close()
+    },
+    cancel() {
+      init?.signal?.removeEventListener('abort', () => undefined)
+    },
+  })
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+}

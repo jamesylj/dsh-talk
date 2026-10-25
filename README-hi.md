@@ -204,7 +204,7 @@ Error: dsh-talk: speak text must not be empty
 | `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | सिंक्रोनस T2A endpoint, मॉडल id (`speech-2.8-turbo` या `speech-2.8-hd`) और सिस्टम वॉइस id |
 | `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(कोई नहीं)* / `Chinese` / `32000` | वैकल्पिक भावना (`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`), भाषा बूस्ट और आउटपुट सैंपल दर (Hz) |
 | `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | प्लेयर जो SSE MP3 को stdin से पढ़कर बजाता है; `streaming: false` पर पूरा ऑडियो बफ़र करके afplay से बजाया जाता है |
-| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | प्रति API अनुरोध वर्ण (लंबा टेक्स्ट वाक्य सीमाओं पर बँटता है) और प्रति अनुरोध टाइमआउट मिलीसेकंड में (5000..600000) |
+| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | प्रति API अनुरोध वर्ण (लंबा टेक्स्ट वाक्य सीमाओं पर बँटता है) और निष्क्रियता टाइमआउट मिलीसेकंड में (ऑडियो प्राप्ति या प्लेयर लेखन पर रीसेट; 5000..600000) |
 | `tts.rate` | `0` | edge-tts/piper के लिए गति ऑफ़सेट प्रतिशत में (-50..50); macOS `say` की गति भी इसी से स्केल होती है |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` निष्पादन (स्थानीय और ऑफ़लाइन; `macos` इंजन केवल macOS पर) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | इंस्टॉल वॉइस का नाम ठीक वैसा जैसा `say -v '?'` सूचीबद्ध करता है; अज्ञात नाम अस्वीकार होता है, चुपचाप डिफ़ॉल्ट वॉइस उपयोग नहीं होती |
