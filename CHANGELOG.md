@@ -1,6 +1,20 @@
 # Changelog
 
+## [0.5.2] - 2026-10-25
+
+### Fixed
+
+- **The composer mode button now switches modes.** `talk/applyMode` declared
+  its single parameter as an object (`{ mode }`), but the Typert host calls a
+  `direct` invocation's service method with the decoded parameter VALUES
+  positionally, so the service received `{ mode: 'manual' }` and rejected it.
+  The parameter is now the scalar `mode` value (a `TalkMode` codec), matching
+  `talk/playLatest`'s single-string parameter; the button's click switches
+  auto ↔ manual immediately. Adds `tests/wire.spec.ts` to pin the scalar
+  parameter shape and the `status.mode` field.
+
 ## [0.5.1] - 2026-10-25
+
 
 ### Added
 

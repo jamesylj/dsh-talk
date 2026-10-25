@@ -75,16 +75,12 @@ export const TALK_STOP_RESULT_SCHEMA = z.object({
   stopped: z.boolean(),
 })
 
-/** The composer mode button's submission. */
-export interface TalkModeInput {
-  /** The mode to switch to. */
-  mode: TalkMode
-}
-
-/** Strict wire schema for {@link TalkModeInput}. */
-export const TALK_MODE_INPUT_SCHEMA = z.object({
-  mode: z.enum(['auto', 'manual']),
-})
+/**
+ * Wire codec for one {@link TalkMode} value. The invocation parameter is the
+ * scalar mode itself (not an object): the host calls `applyMode(mode)` with the
+ * decoded value, matching every other single-argument `talk` method.
+ */
+export const TALK_MODE_SCHEMA = z.enum(['auto', 'manual'])
 
 /** Result of `talk/applyMode`: the effective mode after the switch. */
 export interface TalkModeResult {
@@ -186,7 +182,7 @@ export const TALK_APPLY_MODE_DESCRIPTOR = Object.freeze({
     name: 'mode',
     wire: 'mode',
     source: 'json',
-    codec: strictWire('dsh-talk/types#TalkModeInput', TALK_MODE_INPUT_SCHEMA),
+    codec: strictWire('dsh-talk/types#TalkMode', TALK_MODE_SCHEMA),
   } satisfies InvocationDescriptor['parameters'][number])]),
   result: strictWire('dsh-talk/types#TalkModeResult', TALK_MODE_RESULT_SCHEMA),
   sourceLocation: SOURCE,

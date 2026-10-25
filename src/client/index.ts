@@ -89,7 +89,7 @@ export async function apply(ctx: Context): Promise<void> {
     const stop: TalkVoiceInjected['stop'] = async () =>
       unwrap<TalkStopResult>(await talk.stop(), 'stop')
     const applyMode: TalkModeInjected['applyMode'] = async (mode: TalkMode) =>
-      unwrap<TalkModeResult>(await talk.applyMode({ mode }), 'applyMode')
+      unwrap<TalkModeResult>(await talk.applyMode(mode), 'applyMode')
     const applySettings: TalkSettingsTabInjected['applySettings'] = async (settings: TalkSettingsInput) =>
       unwrap<TalkSettingsResult>(await talk.applySettings(settings), 'applySettings')
 
