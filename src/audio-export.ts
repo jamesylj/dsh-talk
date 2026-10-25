@@ -24,7 +24,7 @@ import { isAbsolute, join, normalize, sep } from 'node:path'
 import { sanitizeText } from './sanitize.ts'
 
 /** Local engines whose audio can be exported to a file. */
-export type LocalTtsEngine = 'edge-tts' | 'macos' | 'mlx' | 'piper'
+export type LocalTtsEngine = 'edge-tts' | 'macos' | 'minimax' | 'mlx' | 'piper'
 
 /** Export state reported with one speak outcome. */
 export type AudioExportState =
@@ -85,10 +85,10 @@ export const BROWSER_EXPORT_NOTE = 'the browser engine synthesizes in the browse
  * File extension of one local engine's output.
  *
  * @param engine - the local engine that produced the audio.
- * @returns `mp3` for edge-tts, `wav` for piper and the macOS `say` engine.
+ * @returns `mp3` for edge-tts and minimax, `wav` for piper and the macOS `say` engine.
  */
 export function exportExtension(engine: LocalTtsEngine): 'mp3' | 'wav' {
-  return engine === 'edge-tts' ? 'mp3' : 'wav'
+  return engine === 'edge-tts' || engine === 'minimax' ? 'mp3' : 'wav'
 }
 
 /**

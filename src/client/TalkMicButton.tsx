@@ -563,9 +563,10 @@ export function TalkMicButton(props: TalkMicProps): ReactNode {
       recordPlaybackBreadcrumb({ kind: 'skip-stale', id: speech.utteranceId, ageMs: Date.now() - speech.at })
       return
     }
-    if (speech.engine === 'mlx') {
+    if (speech.engine === 'mlx' || speech.engine === 'minimax') {
       // The host already played this utterance through the system player while
-      // it synthesized (MLX streaming); fetching the WAV here would double-speak.
+      // it synthesized (MLX streaming / MiniMax SSE → ffplay); fetching the
+      // audio here would double-speak.
       recordPlaybackBreadcrumb({ kind: 'host-played', id: speech.utteranceId })
       return
     }

@@ -51,11 +51,13 @@
             language: ''
         # Text-to-speech.
         tts:
-          # auto | browser | edge-tts | macos | mlx | piper — auto prefers piper
-          # (configured model), then edge-tts, then the browser voice. `macos`
-          # uses the system voice through /usr/bin/say (local, offline,
-          # macOS hosts only); `mlx` runs a quantized Qwen3-TTS model locally on
-          # Apple Silicon and streams chunk-by-chunk through the system player.
+          # auto | browser | edge-tts | macos | minimax | mlx | piper — auto
+          # prefers piper (configured model), then edge-tts, then the browser
+          # voice. `macos` uses the system voice through /usr/bin/say (local,
+          # offline, macOS hosts only); `minimax` streams MiniMax
+          # speech-2.8-turbo from the cloud (API key required); `mlx` runs a
+          # quantized Qwen3-TTS model locally on Apple Silicon and streams
+          # chunk-by-chunk through the system player.
           engine: auto
           # Voice name override; unset = engine default.
           voice: ''
@@ -119,6 +121,36 @@
             refAudio: ''
             refText: ''
             cloneMode: xvector
+          minimax:
+            # MiniMax cloud TTS (synchronous T2A). The API key resolves per
+            # utterance: this explicit value, then $apiKeyEnv, then the harness
+            # credential store's refs section. Never logged.
+            apiKey: ''
+            apiKeyEnv: MINIMAX_CN_API_KEY
+            # Harness credential store read as the last fallback; empty = don't read a file.
+            credentialsFile: ~/.dsh/.credentials.yaml
+            # Synchronous T2A endpoint (api-bj.minimaxi.com is lower latency in
+            # northern China).
+            baseUrl: https://api.minimax.cn/v1/t2a_v2
+            # speech-2.8-turbo (fastest) or speech-2.8-hd (more expressive).
+            model: speech-2.8-turbo
+            # System voice id, e.g. "Chinese (Mandarin)_Warm_Girl",
+            # "female-yujie", "Chinese (Mandarin)_Gentleman".
+            voiceId: Chinese (Mandarin)_Warm_Girl
+            # happy | sad | angry | fearful | disgusted | surprised | neutral; empty = model default.
+            emotion: ''
+            # Language boost; "Chinese" for Mandarin text.
+            languageBoost: Chinese
+            # Player that reads the SSE MP3 stream from stdin (needs ffmpeg).
+            player: ffplay
+            # true = stream while synthesizing; false = buffer the whole reply and play it with afplay.
+            streaming: true
+            # Output sample rate in Hz (8000..48000).
+            sampleRate: 32000
+            # Characters per API request; longer text splits at sentence boundaries (500..10000).
+            batchChars: 2000
+            # Per-request timeout in milliseconds (5000..600000).
+            requestTimeoutMs: 120000
           # Exported audio files: every locally synthesized utterance is also
           # written to a file whose absolute path the speak tool returns as
           # audioPath (hand it to another tool's file argument). The browser

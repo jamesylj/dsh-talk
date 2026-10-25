@@ -25,6 +25,7 @@ import type { AudioExportState, ExportOutcome, LocalTtsEngine } from './audio-ex
 import { BROWSER_EXPORT_NOTE, exportSynthesizedAudio } from './audio-export.ts'
 import { EngineFailure, synthesize, transcribeFunasr, transcribeWhisper } from './engine.ts'
 import { MlxEngine } from './mlx.ts'
+import { MinimaxEngine } from './minimax.ts'
 import { sanitizeText } from './sanitize.ts'
 import {
   appendSettingsFragment,
@@ -186,6 +187,8 @@ export class TalkService extends TypertRemoteService {
   private readonly activeSyntheses = new Map<string, ActiveSynthesis>()
   /** Resident MLX worker (model stays warm across utterances); lazily spawned. */
   private mlxEngine: MlxEngine | null = null
+  /** MiniMax cloud engine (SSE → ffplay); lazily created. */
+  private minimaxEngine: MinimaxEngine | null = null
   /**
    * Per-session speech-loop records, so a host that cannot carry the
    * `dsh-talk/speech` event is observable instead of silently dropping every
@@ -213,6 +216,7 @@ export class TalkService extends TypertRemoteService {
       effect(() => () => {
         this.mlxEngine?.dispose()
         this.mlxEngine = null
+        this.minimaxEngine = null
       })
     }
   }
@@ -221,6 +225,12 @@ export class TalkService extends TypertRemoteService {
   private getMlxEngine(): MlxEngine {
     if (this.mlxEngine === null) this.mlxEngine = new MlxEngine(this.resolved)
     return this.mlxEngine
+  }
+
+  /** Lazily create the MiniMax cloud engine (no model to warm up). */
+  private getMinimaxEngine(): MinimaxEngine {
+    if (this.minimaxEngine === null) this.minimaxEngine = new MinimaxEngine(this.ctx.subprocess, this.resolved)
+    return this.minimaxEngine
   }
 
   /**
@@ -265,7 +275,7 @@ export class TalkService extends TypertRemoteService {
       }
     }
 
-    const localEngine = engine // edge-tts | macos | mlx | piper
+    const localEngine = engine // edge-tts | macos | minimax | mlx | piper
     const controller = new AbortController()
     this.activeSyntheses.set(utteranceId, {
       controller,
@@ -278,16 +288,20 @@ export class TalkService extends TypertRemoteService {
       // synchronously, which is not an EngineFailure; classify it here as the
       // interruption it is (for every local engine).
       if (signal.aborted) throw new EngineFailure('speech was interrupted before synthesis', true)
-      if (localEngine === 'mlx') {
+      if (localEngine === 'mlx' || localEngine === 'minimax') {
         // MLX renders in a worker that plays each chunk through the system
-        // player as it is synthesized, so the full WAV is only available when
-        // the worker exits; the outcome still carries the file for audioPath.
-        const result = await this.getMlxEngine().synthesize(spoken, options.voice, signal)
-        this.cacheUtterance(utteranceId, result.mime, result.data, spoken, 'mlx')
-        const exported = await this.exportAudio(utteranceId, 'mlx', result.data)
+        // player as it is synthesized, and MiniMax streams its SSE audio into
+        // ffplay; in both cases the host already played the utterance, so the
+        // client must not play it again. The full audio is still available for
+        // the cache and the exported file.
+        const result = localEngine === 'mlx'
+          ? await this.getMlxEngine().synthesize(spoken, options.voice, signal)
+          : await this.getMinimaxEngine().synthesize(spoken, options.voice, signal)
+        this.cacheUtterance(utteranceId, result.mime, result.data, spoken, localEngine)
+        const exported = await this.exportAudio(utteranceId, localEngine, result.data)
         const durationSec = result.audioSec > 0 ? result.audioSec : Math.max(0, (Date.now() - startedAt) / 1000)
-        this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, { engine: 'mlx' }, spoken, result.data.byteLength, options.reason))
-        return { spoken: true, engine: 'mlx', audioBytes: result.data.byteLength, durationSec, utteranceId, ...exported }
+        this.recordSpeechEvent(options.session, this.speechEvent(utteranceId, { engine: localEngine }, spoken, result.data.byteLength, options.reason))
+        return { spoken: true, engine: localEngine, audioBytes: result.data.byteLength, durationSec, utteranceId, ...exported }
       }
       const result = await synthesize(this.ctx.subprocess, this.resolved, localEngine, spoken, signal, options.voice)
       const durationSec = Math.max(0, (Date.now() - startedAt) / 1000)

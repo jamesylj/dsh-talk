@@ -15,8 +15,8 @@ import { resolveExportDir } from './audio-export.ts'
 /** Speech-to-text engines. `auto` prefers a configured local engine, then Web Speech. */
 export type SttEngine = 'auto' | 'web' | 'funasr' | 'whisper'
 
-/** Text-to-speech engines. `auto` prefers piper, then edge-tts; `macos` is the system voice. */
-export type TtsEngine = 'auto' | 'browser' | 'edge-tts' | 'macos' | 'mlx' | 'piper'
+/** Text-to-speech engines. `auto` prefers piper, then edge-tts; `macos` is the system voice; `minimax` is the MiniMax cloud TTS. */
+export type TtsEngine = 'auto' | 'browser' | 'edge-tts' | 'macos' | 'minimax' | 'mlx' | 'piper'
 
 /** Turn-end reasons that can trigger auto-read of the assistant's final reply. */
 export type AutoReplyReason = 'completed' | 'max-tokens'
@@ -86,6 +86,51 @@ export const MAX_MLX_CHUNK_CHARS = 500
 
 /** Default system player used for MLX streaming playback. */
 export const DEFAULT_MLX_PLAYER = '/usr/bin/afplay'
+
+/** Default MiniMax synchronous T2A endpoint. */
+export const DEFAULT_MINIMAX_BASE_URL = 'https://api.minimax.cn/v1/t2a_v2'
+
+/** Default MiniMax speech model (fastest T2A tier). */
+export const DEFAULT_MINIMAX_MODEL = 'speech-2.8-turbo'
+
+/** Default MiniMax Mandarin voice (温暖少女). */
+export const DEFAULT_MINIMAX_VOICE = 'Chinese (Mandarin)_Warm_Girl'
+
+/** Default MiniMax language boost. */
+export const DEFAULT_MINIMAX_LANGUAGE_BOOST = 'Chinese'
+
+/** Default streaming player for MiniMax playback (ffmpeg's ffplay reads MP3 from stdin). */
+export const DEFAULT_MINIMAX_PLAYER = 'ffplay'
+
+/** Default MiniMax TTS sample rate in Hz. */
+export const DEFAULT_MINIMAX_SAMPLE_RATE = 32_000
+
+/** Default MiniMax batch size in characters (the API accepts < 10,000). */
+export const DEFAULT_MINIMAX_BATCH_CHARS = 2_000
+
+/** Lower bound for the MiniMax batch size. */
+export const MIN_MINIMAX_BATCH_CHARS = 500
+
+/** Upper bound for the MiniMax batch size. */
+export const MAX_MINIMAX_BATCH_CHARS = 10_000
+
+/** Default per-request timeout for one MiniMax synthesis batch (ms). */
+export const DEFAULT_MINIMAX_REQUEST_TIMEOUT_MS = 120_000
+
+/** Lower bound for the MiniMax request timeout. */
+export const MIN_MINIMAX_REQUEST_TIMEOUT_MS = 5_000
+
+/** Upper bound for the MiniMax request timeout. */
+export const MAX_MINIMAX_REQUEST_TIMEOUT_MS = 600_000
+
+/** Default environment variable holding the MiniMax API key. */
+export const DEFAULT_MINIMAX_API_KEY_ENV = 'MINIMAX_CN_API_KEY'
+
+/** Default harness credential store consulted when the environment variable is unset. */
+export const DEFAULT_MINIMAX_CREDENTIALS_FILE = join(homedir(), '.dsh', '.credentials.yaml')
+
+/** Vocabulary `voice_setting.emotion` accepts on `speech-2.8-*`. */
+export const MINIMAX_EMOTIONS = ['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'neutral'] as const
 
 /** Default in-memory audio cache cap in bytes (8 MiB). */
 export const DEFAULT_MAX_AUDIO_CACHE_BYTES = 8 * 1024 * 1024
@@ -210,6 +255,36 @@ export interface TtsMlxConfig {
   cloneMode?: 'xvector' | 'icl'
 }
 
+/** MiniMax cloud TTS engine configuration (`speech-2.8-turbo` by default). */
+export interface TtsMinimaxConfig {
+  /** API key value written in the config (discouraged: prefer `apiKeyEnv`). */
+  apiKey?: string
+  /** Environment variable holding the API key (default "MINIMAX_CN_API_KEY"). */
+  apiKeyEnv?: string
+  /** Harness credential store read as a fallback (`refs:` section); "" disables the fallback. */
+  credentialsFile?: string
+  /** Synchronous T2A endpoint (default "https://api.minimax.cn/v1/t2a_v2"). */
+  baseUrl?: string
+  /** Model id (default "speech-2.8-turbo"). */
+  model?: string
+  /** System voice id (default "Chinese (Mandarin)_Warm_Girl"). */
+  voiceId?: string
+  /** Emotion hint: happy | sad | angry | fearful | disgusted | surprised | neutral; unset = model default. */
+  emotion?: string
+  /** Language boost (default "Chinese"). */
+  languageBoost?: string
+  /** Streaming player reading MP3 from stdin (default "ffplay"). */
+  player?: string
+  /** Stream SSE audio into the player as it arrives (default true); false buffers the whole utterance for afplay. */
+  streaming?: boolean
+  /** Output sample rate in Hz (default 32000). */
+  sampleRate?: number
+  /** Characters per API request; longer text is split at sentence boundaries (default 2000, 500..10000). */
+  batchChars?: number
+  /** Per-request timeout in milliseconds (default 120000). */
+  requestTimeoutMs?: number
+}
+
 /** macOS system voice (`say`) engine configuration. */
 export interface TtsMacosConfig {
   /** `say` executable (default "/usr/bin/say"). */
@@ -222,7 +297,7 @@ export interface TtsMacosConfig {
 
 /** Text-to-speech configuration. */
 export interface TtsConfig {
-  /** Engine selection: auto | browser | edge-tts | macos | piper (default auto). */
+  /** Engine selection: auto | browser | edge-tts | macos | minimax | mlx | piper (default auto). */
   engine?: TtsEngine
   /** edge-tts voice override; unset = `tts.edgeTts.voice`. The macOS engine uses `tts.macos.voice`. */
   voice?: string
@@ -257,6 +332,8 @@ export interface TtsConfig {
   macos?: TtsMacosConfig
   /** MLX local inference engine (Qwen3-TTS, Apple Silicon). */
   mlx?: TtsMlxConfig
+  /** MiniMax cloud TTS (speech-2.8-turbo); needs an API key. */
+  minimax?: TtsMinimaxConfig
   /** Exported-audio files: where they go and how the directory is bounded. */
   export?: TtsExportConfig
 }
@@ -402,6 +479,32 @@ export interface ResolvedConfig {
   mlxRefText: string | null
   /** Clone strategy. */
   mlxCloneMode: 'xvector' | 'icl'
+  /** MiniMax API key from the config, or null. */
+  minimaxApiKey: string | null
+  /** Environment variable consulted for the MiniMax API key. */
+  minimaxApiKeyEnv: string
+  /** Harness credential store read for the MiniMax key, or null when disabled. */
+  minimaxCredentialsFile: string | null
+  /** MiniMax T2A endpoint. */
+  minimaxBaseUrl: string
+  /** MiniMax model id. */
+  minimaxModel: string
+  /** MiniMax system voice id. */
+  minimaxVoiceId: string
+  /** MiniMax emotion hint, or null. */
+  minimaxEmotion: string | null
+  /** MiniMax language boost. */
+  minimaxLanguageBoost: string
+  /** Streaming player reading MP3 from stdin. */
+  minimaxPlayer: string
+  /** Whether MiniMax audio streams into the player as it arrives. */
+  minimaxStreaming: boolean
+  /** MiniMax output sample rate in Hz. */
+  minimaxSampleRate: number
+  /** Characters per MiniMax API request. */
+  minimaxBatchChars: number
+  /** Per-request MiniMax timeout in milliseconds. */
+  minimaxRequestTimeoutMs: number
   /** piper executable. */
   piperCommand: string
   /** piper model path, or null. */
@@ -475,7 +578,7 @@ export const Config: z<Config> = z.object({
     }),
   }),
   tts: z.object({
-    engine: z.union(['auto', 'browser', 'edge-tts', 'macos', 'mlx', 'piper'] as const).default('auto'),
+    engine: z.union(['auto', 'browser', 'edge-tts', 'macos', 'minimax', 'mlx', 'piper'] as const).default('auto'),
     voice: z.string(),
     rate: z.number().min(-50).max(50).default(0),
     fallbackToBrowser: z.boolean().default(true),
@@ -513,6 +616,21 @@ export const Config: z<Config> = z.object({
       refText: z.string(),
       cloneMode: z.union(['xvector', 'icl'] as const).default('xvector'),
     }),
+    minimax: z.object({
+      apiKey: z.string(),
+      apiKeyEnv: z.string().default(DEFAULT_MINIMAX_API_KEY_ENV),
+      credentialsFile: z.string().default(DEFAULT_MINIMAX_CREDENTIALS_FILE),
+      baseUrl: z.string().default(DEFAULT_MINIMAX_BASE_URL),
+      model: z.string().default(DEFAULT_MINIMAX_MODEL),
+      voiceId: z.string().default(DEFAULT_MINIMAX_VOICE),
+      emotion: z.string(),
+      languageBoost: z.string().default(DEFAULT_MINIMAX_LANGUAGE_BOOST),
+      player: z.string().default(DEFAULT_MINIMAX_PLAYER),
+      streaming: z.boolean().default(true),
+      sampleRate: z.number().min(8_000).max(48_000).default(DEFAULT_MINIMAX_SAMPLE_RATE),
+      batchChars: z.number().min(MIN_MINIMAX_BATCH_CHARS).max(MAX_MINIMAX_BATCH_CHARS).default(DEFAULT_MINIMAX_BATCH_CHARS),
+      requestTimeoutMs: z.number().min(MIN_MINIMAX_REQUEST_TIMEOUT_MS).max(MAX_MINIMAX_REQUEST_TIMEOUT_MS).default(DEFAULT_MINIMAX_REQUEST_TIMEOUT_MS),
+    }),
     export: z.object({
       enabled: z.boolean().default(true),
       // Empty = the plugin's own default directory (never the workspace root).
@@ -545,7 +663,7 @@ export const Config: z<Config> = z.object({
 })
 
 const STT_ENGINES = ['auto', 'web', 'funasr', 'whisper'] as const
-const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'macos', 'mlx', 'piper'] as const
+const TTS_ENGINES = ['auto', 'browser', 'edge-tts', 'macos', 'minimax', 'mlx', 'piper'] as const
 const AUTO_REPLY_REASONS = ['completed', 'max-tokens'] as const
 
 function isSttEngine(value: unknown): value is SttEngine {
@@ -676,7 +794,7 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
 
   const ttsEngineRaw = tts.engine ?? 'auto'
   if (!isTtsEngine(ttsEngineRaw)) {
-    throw new Error(`dsh-talk: config.tts.engine must be one of "auto", "browser", "edge-tts", "macos", "mlx", "piper", got ${JSON.stringify(ttsEngineRaw)}`)
+    throw new Error(`dsh-talk: config.tts.engine must be one of "auto", "browser", "edge-tts", "macos", "minimax", "mlx", "piper", got ${JSON.stringify(ttsEngineRaw)}`)
   }
   const ttsVoice = nullableNonEmptyStringOf(tts.voice, 'tts.voice')
   const ttsRate = numberOf(tts.rate, 0, -50, 50, 'tts.rate')
@@ -724,6 +842,43 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
   if (mlxMode === 'clone' && mlxCloneMode === 'icl' && mlxRefText === null) {
     throw new Error('dsh-talk: config.tts.mlx.refText is required when tts.mlx.cloneMode = "icl"')
   }
+  const minimaxApiKey = nullableNonEmptyStringOf(tts.minimax?.apiKey, 'tts.minimax.apiKey')
+  const minimaxApiKeyEnv = stringOf(tts.minimax?.apiKeyEnv, DEFAULT_MINIMAX_API_KEY_ENV, 'tts.minimax.apiKeyEnv')
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(minimaxApiKeyEnv)) {
+    throw new Error(`dsh-talk: config.tts.minimax.apiKeyEnv must be a shell identifier, got ${JSON.stringify(minimaxApiKeyEnv)}`)
+  }
+  const minimaxCredentialsFileRaw = stringOf(tts.minimax?.credentialsFile, DEFAULT_MINIMAX_CREDENTIALS_FILE, 'tts.minimax.credentialsFile')
+  const minimaxCredentialsFile = minimaxCredentialsFileRaw === ''
+    ? null
+    : minimaxCredentialsFileRaw.startsWith('~/')
+      ? join(homedir(), minimaxCredentialsFileRaw.slice(2))
+      : minimaxCredentialsFileRaw
+  const minimaxBaseUrl = stringOf(tts.minimax?.baseUrl, DEFAULT_MINIMAX_BASE_URL, 'tts.minimax.baseUrl')
+  if (!/^https?:\/\//u.test(minimaxBaseUrl)) {
+    throw new Error(`dsh-talk: config.tts.minimax.baseUrl must be an http(s) URL, got ${JSON.stringify(minimaxBaseUrl)}`)
+  }
+  const minimaxModel = stringOf(tts.minimax?.model, DEFAULT_MINIMAX_MODEL, 'tts.minimax.model')
+  if (minimaxModel.trim().length === 0) throw new Error('dsh-talk: config.tts.minimax.model must not be empty')
+  const minimaxVoiceId = stringOf(tts.minimax?.voiceId, DEFAULT_MINIMAX_VOICE, 'tts.minimax.voiceId')
+  if (minimaxVoiceId.trim().length === 0) throw new Error('dsh-talk: config.tts.minimax.voiceId must not be empty')
+  const minimaxEmotion = nullableNonEmptyStringOf(tts.minimax?.emotion, 'tts.minimax.emotion')
+  if (minimaxEmotion !== null && !(MINIMAX_EMOTIONS as readonly string[]).includes(minimaxEmotion)) {
+    throw new Error(`dsh-talk: config.tts.minimax.emotion must be one of ${MINIMAX_EMOTIONS.join(', ')}, got ${JSON.stringify(minimaxEmotion)}`)
+  }
+  const minimaxLanguageBoost = stringOf(tts.minimax?.languageBoost, DEFAULT_MINIMAX_LANGUAGE_BOOST, 'tts.minimax.languageBoost')
+  if (minimaxLanguageBoost.trim().length === 0) throw new Error('dsh-talk: config.tts.minimax.languageBoost must not be empty')
+  const minimaxPlayer = stringOf(tts.minimax?.player, DEFAULT_MINIMAX_PLAYER, 'tts.minimax.player')
+  if (minimaxPlayer.trim().length === 0) throw new Error('dsh-talk: config.tts.minimax.player must not be empty')
+  const minimaxStreaming = booleanOf(tts.minimax?.streaming, true, 'tts.minimax.streaming')
+  const minimaxSampleRate = numberOf(tts.minimax?.sampleRate, DEFAULT_MINIMAX_SAMPLE_RATE, 8_000, 48_000, 'tts.minimax.sampleRate')
+  const minimaxBatchChars = numberOf(tts.minimax?.batchChars, DEFAULT_MINIMAX_BATCH_CHARS, MIN_MINIMAX_BATCH_CHARS, MAX_MINIMAX_BATCH_CHARS, 'tts.minimax.batchChars')
+  const minimaxRequestTimeoutMs = numberOf(
+    tts.minimax?.requestTimeoutMs,
+    DEFAULT_MINIMAX_REQUEST_TIMEOUT_MS,
+    MIN_MINIMAX_REQUEST_TIMEOUT_MS,
+    MAX_MINIMAX_REQUEST_TIMEOUT_MS,
+    'tts.minimax.requestTimeoutMs',
+  )
   const ttsExportEnabled = booleanOf(tts.export?.enabled, true, 'tts.export.enabled')
   const ttsExportDir = resolveExportDir(tts.export?.dir)
   const ttsExportMaxFiles = numberOf(
@@ -820,6 +975,19 @@ export function resolveConfig(config: Config | undefined): ResolvedConfig {
     mlxRefAudio,
     mlxRefText,
     mlxCloneMode,
+    minimaxApiKey,
+    minimaxApiKeyEnv,
+    minimaxCredentialsFile,
+    minimaxBaseUrl,
+    minimaxModel,
+    minimaxVoiceId,
+    minimaxEmotion,
+    minimaxLanguageBoost,
+    minimaxPlayer,
+    minimaxStreaming,
+    minimaxSampleRate,
+    minimaxBatchChars,
+    minimaxRequestTimeoutMs,
     piperCommand,
     piperModelPath,
     ttsExportEnabled,

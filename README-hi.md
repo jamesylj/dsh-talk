@@ -185,7 +185,7 @@ Error: dsh-talk: speak text must not be empty
 | `stt.silenceFinaliseMs` | `4000` | इतनी मिलीसेकंड तक आवाज़ न आने पर लगातार Web Speech रोकें (500..15000) |
 | `stt.funasr.url` | *(कोई नहीं)* | FunASR इन्फ़रेंस एंडपॉइंट; `funasr` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
 | `stt.whisper.modelPath` | *(कोई नहीं)* | whisper.cpp मॉडल; `whisper` इंजन के लिए आवश्यक; खाली मान को अपंजीकृत माना जाता है |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`; auto पहले piper, फिर edge-tts, फिर ब्राउज़र वॉइस; `macos` सिस्टम वॉइस उपयोग करता है (केवल macOS); `mlx` Apple Silicon पर क्वांटाइज़्ड Qwen3-TTS स्थानीय रूप से चलाता है |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `minimax` / `mlx` / `piper`; auto पहले piper, फिर edge-tts, फिर ब्राउज़र वॉइस; `macos` सिस्टम वॉइस उपयोग करता है (केवल macOS); `minimax` क्लाउड से MiniMax `speech-2.8-turbo` स्ट्रीम करता है (API key आवश्यक); `mlx` Apple Silicon पर क्वांटाइज़्ड Qwen3-TTS स्थानीय रूप से चलाता है |
 | `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | MLX TTS venv का Python इंटरप्रेटर (Apple Silicon स्थानीय अनुमान) |
 | `tts.mlx.script` | *(bundled)* | Worker स्क्रिप्ट; खाली = bundled `worker/mlx_tts.py` |
 | `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | क्वांटाइज़्ड Qwen3-TTS मॉडल निर्देशिका या HF repo id |
@@ -200,6 +200,11 @@ Error: dsh-talk: speak text must not be empty
 | `tts.mlx.refAudio` | *(कोई नहीं)* | clone मोड के लिए संदर्भ WAV; `mode: clone` पर आवश्यक |
 | `tts.mlx.refText` | *(कोई नहीं)* | `tts.mlx.refAudio` का सटीक ट्रांसक्रिप्ट; केवल `cloneMode: icl` के लिए |
 | `tts.mlx.cloneMode` | `xvector` | `xvector` (केवल स्पीकर एम्बेडिंग, सबसे तेज़) या `icl` (ऑडियो + टेक्स्ट) |
+| `tts.minimax.apiKey` / `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | *(कोई नहीं)* / `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | MiniMax API key: स्पष्ट मान, फिर निर्दिष्ट environment variable, फिर harness credential store (`refs:` अनुभाग); key कभी लॉग नहीं होती |
+| `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | सिंक्रोनस T2A endpoint, मॉडल id (`speech-2.8-turbo` या `speech-2.8-hd`) और सिस्टम वॉइस id |
+| `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(कोई नहीं)* / `Chinese` / `32000` | वैकल्पिक भावना (`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`), भाषा बूस्ट और आउटपुट सैंपल दर (Hz) |
+| `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | प्लेयर जो SSE MP3 को stdin से पढ़कर बजाता है; `streaming: false` पर पूरा ऑडियो बफ़र करके afplay से बजाया जाता है |
+| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | प्रति API अनुरोध वर्ण (लंबा टेक्स्ट वाक्य सीमाओं पर बँटता है) और प्रति अनुरोध टाइमआउट मिलीसेकंड में (5000..600000) |
 | `tts.rate` | `0` | edge-tts/piper के लिए गति ऑफ़सेट प्रतिशत में (-50..50); macOS `say` की गति भी इसी से स्केल होती है |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` निष्पादन (स्थानीय और ऑफ़लाइन; `macos` इंजन केवल macOS पर) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | इंस्टॉल वॉइस का नाम ठीक वैसा जैसा `say -v '?'` सूचीबद्ध करता है; अज्ञात नाम अस्वीकार होता है, चुपचाप डिफ़ॉल्ट वॉइस उपयोग नहीं होती |

@@ -193,7 +193,7 @@ Error: dsh-talk: speak text must not be empty
 | `stt.silenceFinaliseMs` | `4000` | 连续 Web Speech 在没有语音活动达到此毫秒数后停止（500..15000） |
 | `stt.funasr.url` | *(无)* | FunASR 推理端点；引擎为 `funasr` 时必填；空值视为未配置 |
 | `stt.whisper.modelPath` | *(无)* | whisper.cpp 模型；引擎为 `whisper` 时必填；空值视为未配置 |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`；auto 优先 piper，其次 edge-tts，最后浏览器语音；`macos` 使用系统语音（仅 macOS）；`mlx` 在 Apple Silicon 上本地运行量化 Qwen3-TTS |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `minimax` / `mlx` / `piper`；auto 优先 piper，其次 edge-tts，最后浏览器语音；`macos` 使用系统语音（仅 macOS）；`minimax` 使用 MiniMax `speech-2.8-turbo` 云端语音（需要 API Key）；`mlx` 在 Apple Silicon 上本地运行量化 Qwen3-TTS |
 | `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | MLX TTS venv 的 Python 解释器（Apple Silicon 本地推理） |
 | `tts.mlx.script` | *(内置)* | Worker 脚本；留空 = 内置 `worker/mlx_tts.py` |
 | `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | 量化 Qwen3-TTS 模型目录或 HF repo id |
@@ -208,6 +208,11 @@ Error: dsh-talk: speak text must not be empty
 | `tts.mlx.refAudio` | *(无)* | 克隆模式参考音频；`mode: clone` 时必填 |
 | `tts.mlx.refText` | *(无)* | 参考音频的精确文本；仅 `cloneMode: icl` 需要 |
 | `tts.mlx.cloneMode` | `xvector` | `xvector`（仅说话人向量，最快）或 `icl`（音频+文本，细节更接近） |
+| `tts.minimax.apiKey` / `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | *(无)* / `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | MiniMax API Key：显式值 → 指定环境变量 → harness 凭据库（`refs:` 段）；密钥不会写入日志 |
+| `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | 同步 T2A 接口、模型 ID（`speech-2.8-turbo` 或 `speech-2.8-hd`）与系统音色 ID |
+| `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(无)* / `Chinese` / `32000` | 可选情绪（`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`）、语言增强、输出采样率（Hz） |
+| `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | 从 stdin 读取 SSE MP3 并边生成边播放；设为 `streaming: false` 时先缓冲整段、再用 afplay 播放 |
+| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | 每次 API 请求的字符数（超长文本按句切分）与单次请求超时（毫秒，5000..600000） |
 | `tts.rate` | `0` | edge-tts/piper 语速偏移（百分比，-50..50）；同时按百分比缩放 macOS `say` 的语速 |
 | `tts.macos.command` | `/usr/bin/say` | macOS `say` 可执行文件（本地离线；`macos` 引擎仅 macOS 可用） |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | 已安装语音名，须与 `say -v '?'` 列出的完全一致；未知名称会被拒绝，而不是静默改用系统默认语音 |

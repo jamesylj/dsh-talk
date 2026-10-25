@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1] - 2026-10-25
+
+### Added
+
+- **MiniMax cloud TTS engine (`tts.engine: minimax`, `speech-2.8-turbo`).** The new engine calls the synchronous T2A endpoint (`POST https://api.minimax.cn/v1/t2a_v2`) with `stream: true` and pipes the SSE hex-encoded MP3 chunks straight into `ffplay`'s stdin, so the first word starts in a few hundred milliseconds and a long reply plays as one continuous stream (no per-sentence seams, no whole-reply synthesis wait). Text longer than `tts.minimax.batchChars` (default 2000) is split at sentence boundaries across requests while one player process keeps playing; the complete MP3 is still cached and exported like any host-synthesized utterance, and the client skips its own playback for this engine. `tts.minimax.streaming: false` buffers the whole reply and plays it with `afplay` instead (no ffplay needed). API key resolution is per utterance: `tts.minimax.apiKey` → `$tts.minimax.apiKeyEnv` (default `MINIMAX_CN_API_KEY`) → the harness credential store's `refs:` section (`~/.dsh/.credentials.yaml`); the key is never logged. New config: `tts.minimax.*` (baseUrl, model, voiceId, emotion, languageBoost, player, streaming, sampleRate, batchChars, requestTimeoutMs, credentialsFile, apiKeyEnv, apiKey), `tts.minimax.voiceId` defaults to `Chinese (Mandarin)_Warm_Girl`, and `tts.rate` maps onto the API `speed` field.
+
 ## [0.3.39] - 2026-10-25
 
 ### Fixed

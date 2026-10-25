@@ -15,7 +15,7 @@ import { z } from 'zod'
 export type SpeechReason = 'speak-tool' | 'turn-end' | 'approval' | 'error' | 'auto-reply'
 
 /** Engines that can synthesize speech in this plugin. */
-export type SpeechTtsEngine = 'browser' | 'edge-tts' | 'macos' | 'mlx' | 'piper'
+export type SpeechTtsEngine = 'browser' | 'edge-tts' | 'macos' | 'minimax' | 'mlx' | 'piper'
 
 /** Every reason that can ride a speech payload (shared by the projection and the wire schemas). */
 export const SPEECH_REASON_SCHEMA = z.union([
@@ -27,7 +27,7 @@ export const SPEECH_REASON_SCHEMA = z.union([
 ])
 
 /** Every engine that can ride a speech payload. */
-export const SPEECH_TTS_ENGINE_SCHEMA = z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('macos'), z.literal('mlx'), z.literal('piper')])
+export const SPEECH_TTS_ENGINE_SCHEMA = z.union([z.literal('browser'), z.literal('edge-tts'), z.literal('macos'), z.literal('minimax'), z.literal('mlx'), z.literal('piper')])
 
 /** Payload of one `dsh-talk/speech` session event. */
 export interface DshTalkSpeechEvent {

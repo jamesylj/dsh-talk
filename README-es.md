@@ -185,7 +185,7 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 | `stt.silenceFinaliseMs` | `4000` | Detener Web Speech continuo tras estos milisegundos sin voz (500..15000) |
 | `stt.funasr.url` | *(ninguna)* | Endpoint de inferencia FunASR; obligatorio con el motor `funasr`; un valor vacío cuenta como no configurado |
 | `stt.whisper.modelPath` | *(ninguna)* | Modelo whisper.cpp; obligatorio con el motor `whisper`; un valor vacío cuenta como no configurado |
-| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `mlx` / `piper`; auto prefiere piper, luego edge-tts, luego la voz del navegador; `macos` usa la voz del sistema (solo macOS); `mlx` ejecuta localmente un Qwen3-TTS cuantizado en Apple Silicon |
+| `tts.engine` | `auto` | `auto` / `browser` / `edge-tts` / `macos` / `minimax` / `mlx` / `piper`; auto prefiere piper, luego edge-tts, luego la voz del navegador; `macos` usa la voz del sistema (solo macOS); `minimax` transmite MiniMax `speech-2.8-turbo` desde la nube (requiere API key); `mlx` ejecuta localmente un Qwen3-TTS cuantizado en Apple Silicon |
 | `tts.mlx.command` | `~/.dsh-talk/mlx-tts-venv/bin/python` | Intérprete Python del venv de MLX (inferencia local en Apple Silicon) |
 | `tts.mlx.script` | *(incluido)* | Script worker; sin valor = el `worker/mlx_tts.py` incluido |
 | `tts.mlx.model` | `~/.dsh-talk/models/qwen3-tts-0.6b-4bit` | Directorio del modelo Qwen3-TTS cuantizado o repo id de HF |
@@ -200,6 +200,11 @@ Todos los ajustes son campos `Config` de Schemastery (modificables desde cordis.
 | `tts.mlx.refAudio` | *(ninguno)* | WAV de referencia para clone; obligatorio con `mode: clone` |
 | `tts.mlx.refText` | *(ninguno)* | Transcripción exacta de `tts.mlx.refAudio`; solo para `cloneMode: icl` |
 | `tts.mlx.cloneMode` | `xvector` | `xvector` (solo embedding de hablante, lo más rápido) o `icl` (audio + texto) |
+| `tts.minimax.apiKey` / `tts.minimax.apiKeyEnv` / `tts.minimax.credentialsFile` | *(ninguno)* / `MINIMAX_CN_API_KEY` / `~/.dsh/.credentials.yaml` | API key de MiniMax: valor explícito, luego la variable de entorno indicada, luego el almacén de credenciales del harness (sección `refs:`); nunca se registra en logs |
+| `tts.minimax.baseUrl` / `tts.minimax.model` / `tts.minimax.voiceId` | `https://api.minimax.cn/v1/t2a_v2` / `speech-2.8-turbo` / `Chinese (Mandarin)_Warm_Girl` | Endpoint T2A síncrono, id de modelo (`speech-2.8-turbo` o `speech-2.8-hd`) e id de voz del sistema |
+| `tts.minimax.emotion` / `tts.minimax.languageBoost` / `tts.minimax.sampleRate` | *(ninguno)* / `Chinese` / `32000` | Emoción opcional (`happy`/`sad`/`angry`/`fearful`/`disgusted`/`surprised`/`neutral`), refuerzo de idioma y frecuencia de muestreo de salida (Hz) |
+| `tts.minimax.player` / `tts.minimax.streaming` | `ffplay` / `true` | Reproductor que lee el MP3 SSE desde stdin mientras se genera; con `streaming: false` se almacena el audio completo y se reproduce con afplay |
+| `tts.minimax.batchChars` / `tts.minimax.requestTimeoutMs` | `2000` / `120000` | Caracteres por petición (el texto largo se divide en límites de frase) y timeout por petición en milisegundos (5000..600000) |
 | `tts.rate` | `0` | Desplazamiento de velocidad en porcentaje (-50..50) para edge-tts/piper; también escala la velocidad de `say` en macOS |
 | `tts.macos.command` | `/usr/bin/say` | Ejecutable `say` de macOS (local y sin conexión; el motor `macos` solo existe en macOS) |
 | `tts.macos.voice` | `Eddy (中文（中国大陆）)` | Nombre de voz instalada exactamente como lo lista `say -v '?'`; un nombre desconocido se rechaza en vez de usar en silencio la voz por defecto |

@@ -1,7 +1,7 @@
 {
   "name": "dsh-talk",
-  "version": "0.3.39",
-  "description": "Voice-first session loop for DeepSeek Harness: a composer microphone button with browser/local speech-to-text (Web Speech, FunASR, whisper.cpp), a speak tool for text-to-speech replies (browser, edge-tts, piper), event announcements with mute, and speak-to-interrupt.",
+  "version": "0.4.1",
+  "description": "Voice-first session loop for DeepSeek Harness: a composer microphone button with browser/local speech-to-text (Web Speech, FunASR, whisper.cpp), a speak tool for text-to-speech replies (browser, edge-tts, piper, macOS, MiniMax, MLX), event announcements with mute, and speak-to-interrupt.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PerryLink/dsh-talk.git"
